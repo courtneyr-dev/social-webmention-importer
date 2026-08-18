@@ -1,0 +1,103 @@
+/**
+ * Social Webmention Importer — admin screen styles.
+ */
+
+.swi-card {
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	background: #fff;
+	margin: 1em 0;
+	padding: 1em 1.25em;
+}
+
+.swi-card--error {
+	border-left: 4px solid #d63638;
+}
+
+.swi-card legend {
+	font-weight: 600;
+	padding: 0 0.4em;
+	word-break: break-all;
+}
+
+.swi-card__status {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5em;
+	align-items: center;
+}
+
+.swi-grid {
+	display: grid;
+	grid-template-columns: repeat( auto-fit, minmax( 260px, 1fr ) );
+	gap: 0 1.5em;
+}
+
+.swi-grid label,
+.swi-card p > label:first-child {
+	display: block;
+	font-weight: 600;
+	margin-bottom: 0.25em;
+}
+
+.swi-grid input[type="text"],
+.swi-grid input[type="url"] {
+	width: 100%;
+}
+
+.swi-badge {
+	display: inline-block;
+	padding: 0.1em 0.6em;
+	border-radius: 999px;
+	background: #f0f0f1;
+	font-size: 0.85em;
+}
+
+.swi-badge--verified,
+.swi-badge--imported,
+.swi-badge--updated {
+	background: #d5e8d4;
+}
+
+.swi-badge--unverified,
+.swi-badge--unknown,
+.swi-badge--update,
+.swi-badge--skipped-by-reviewer,
+.swi-badge--skipped-duplicate {
+	background: #fff3cd;
+}
+
+.swi-badge--duplicate,
+.swi-badge--failed-verification,
+.swi-badge--failed-fetch,
+.swi-badge--failed-validation,
+.swi-badge--failed-insertion {
+	background: #f8d7da;
+}
+
+.swi-warnings {
+	border-left: 4px solid #dba617;
+	background: #fcf9e8;
+	padding: 0.5em 1em;
+	margin: 0.5em 0 1em;
+}
+
+.swi-error {
+	color: #d63638;
+	font-weight: 600;
+}
+
+.swi-required {
+	color: #d63638;
+}
+
+.swi-avatar-preview {
+	display: inline-block;
+	border-radius: 50%;
+	vertical-align: middle;
+	margin-inline-start: 0.5em;
+}
+
+.swi-target-url {
+	font-family: monospace;
+}

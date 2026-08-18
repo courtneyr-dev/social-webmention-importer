@@ -1,0 +1,104 @@
+<?php
+/**
+ * Front-end attribution for curated social responses.
+ *
+ * @package CourtneyRDev\SocialWebmentionImporter
+ */
+
+namespace CourtneyRDev\SocialWebmentionImporter\Display;
+
+use CourtneyRDev\SocialWebmentionImporter\Plugin;
+
+/**
+ * Renders the "Originally posted on …" label and the LinkedIn network badge.
+ *
+ * Verified Webmentions keep the Webmention plugin's presentation untouched.
+ * Curated responses get a server-rendered source label appended to the
+ * comment text — no scripts, no embeds, works without JavaScript — plus
+ * screen-reader text identifying the response as externally sourced.
+ *
+ * The theme already paints network badges (X, Mastodon, Bluesky, …) from
+ * the comment author URL with pure CSS; this class only adds the missing
+ * LinkedIn rule, scoped to the same selector vocabulary, instead of
+ * editing the theme.
+ */
+class Attribution {
+
+	/**
+	 * Human names for provider slugs used in the label.
+	 *
+	 * @var array<string,string>
+	 */
+	const PROVIDER_LABELS = array(
+		'x'        => 'X',
+		'linkedin' => 'LinkedIn',
+	);
+
+	/**
+	 * Hook up display filters.
+	 */
+	public static function init() {
+		add_filter( 'comment_text', array( static::class, 'append_source_label' ), 20, 2 );
+		add_action( 'wp_enqueue_scripts', array( static::class, 'enqueue_front_styles' ) );
+	}
+
+	/**
+	 * Append the source label to curated social responses.
+	 *
+	 * @param string           $comment_text Comment text (already filtered by core).
+	 * @param \WP_Comment|null $comment      Comment object.
+	 * @return string
+	 */
+	public static function append_source_label( $comment_text, $comment = null ) {
+		if ( ! $comment instanceof \WP_Comment ) {
+			return $comment_text;
+		}
+
+		if ( Plugin::MODE_SOCIAL_LINKBACK !== get_comment_meta( $comment->comment_ID, '_swi_import_mode', true ) ) {
+			return $comment_text;
+		}
+
+		$source   = get_comment_meta( $comment->comment_ID, 'url', true );
+		$provider = get_comment_meta( $comment->comment_ID, '_swi_provider', true );
+
+		if ( ! $source || ! wp_http_validate_url( $source ) ) {
+			return $comment_text;
+		}
+
+		$network = self::PROVIDER_LABELS[ $provider ] ?? ucfirst( (string) $provider );
+
+		$label = sprintf(
+			'<p class="swi-source-label"><a href="%1$s" rel="nofollow ugc noopener">%2$s<span class="screen-reader-text"> %3$s</span></a></p>',
+			esc_url( $source ),
+			esc_html(
+				sprintf(
+					/* translators: %s: network name (X, LinkedIn). */
+					__( 'Originally posted on %s', 'social-webmention-importer' ),
+					$network
+				)
+			),
+			esc_html__( '(externally sourced response, opens the original post)', 'social-webmention-importer' )
+		);
+
+		return $comment_text . $label;
+	}
+
+	/**
+	 * Enqueue the small front-end stylesheet on singular views with comments.
+	 *
+	 * Contains the source-label styling and the LinkedIn badge rule that
+	 * mirrors the theme's CSS-only network badges.
+	 */
+	public static function enqueue_front_styles() {
+		if ( ! is_singular() ) {
+			return;
+		}
+
+		wp_enqueue_style(
+			'swi-front',
+			SWI_PLUGIN_URL . 'assets/css/front.css',
+			array(),
+			SWI_VERSION
+		);
+	}
+}

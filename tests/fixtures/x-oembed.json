@@ -1,0 +1,13 @@
+{
+  "url": "https://x.com/alexdoe/status/1234567890123456789",
+  "author_name": "Alex Doe 👋",
+  "author_url": "https://x.com/alexdoe",
+  "html": "<blockquote class=\"twitter-tweet\" data-dnt=\"true\"><p lang=\"en\" dir=\"ltr\">This sample article changed how I think about docs.<br><br>Wonderful work! <a href=\"https://t.co/FIXTURE00\">https://t.co/FIXTURE00</a></p>&mdash; Alex Doe 👋 (@alexdoe) <a href=\"https://x.com/alexdoe/status/1234567890123456789?ref_src=twsrc%5Etfw\">August 18, 2026</a></blockquote>\n\n",
+  "width": 550,
+  "height": null,
+  "type": "rich",
+  "cache_age": "3153600000",
+  "provider_name": "X",
+  "provider_url": "https://x.com",
+  "version": "1.0"
+}
