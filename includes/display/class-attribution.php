@@ -39,7 +39,41 @@ class Attribution {
 	 */
 	public static function init() {
 		add_filter( 'comment_text', array( static::class, 'append_source_label' ), 20, 2 );
+		add_filter( 'comment_class', array( static::class, 'provider_comment_class' ), 10, 4 );
 		add_action( 'wp_enqueue_scripts', array( static::class, 'enqueue_front_styles' ) );
+	}
+
+	/**
+	 * Tag imported comments with their provider so CSS can paint a network
+	 * badge even when no author URL exists.
+	 *
+	 * The theme's badges key off the comment author URL, but LinkedIn does
+	 * not expose commenter profile URLs publicly — those imports would
+	 * otherwise render with no badge at all.
+	 *
+	 * @param string[]    $classes    Comment classes.
+	 * @param string[]    $css_class  Additional classes (unused).
+	 * @param string      $comment_id Comment ID.
+	 * @param \WP_Comment $comment    Comment object.
+	 * @return string[]
+	 */
+	public static function provider_comment_class( $classes, $css_class, $comment_id, $comment ) {
+		$provider = get_comment_meta( (int) $comment_id, '_swi_provider', true );
+		if ( ! $provider ) {
+			return $classes;
+		}
+
+		$classes[] = 'swi-provider-' . sanitize_html_class( $provider );
+
+		// Imported commenters have no email, so without an avatar meta the
+		// avatar block renders a Gravatar placeholder. Flag the comment so
+		// CSS can hide the placeholder instead; the class disappears as
+		// soon as an avatar is added.
+		if ( '' === (string) get_comment_meta( (int) $comment_id, 'avatar', true ) ) {
+			$classes[] = 'swi-no-avatar';
+		}
+
+		return $classes;
 	}
 
 	/**

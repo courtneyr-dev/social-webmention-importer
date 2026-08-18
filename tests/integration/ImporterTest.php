@@ -262,6 +262,33 @@ class ImporterTest extends WP_UnitTestCase {
 		$this->assertTrue( Plugin::user_can_import( self::$post_id ) );
 	}
 
+	public function test_provider_and_no_avatar_comment_classes() {
+		$with_avatar = Comment_Importer::import( $this->curated_record() );
+
+		$without              = $this->curated_record();
+		$without->source_url  = 'https://www.linkedin.com/feed/update/urn:li:activity:123?commentUrn=urn%3Ali%3Acomment%3A%28activity%3A123%2C456%29';
+		$without->canonical_url = 'https://www.linkedin.com/feed/update/urn:li:activity:123?commentUrn=urn%3Ali%3Acomment%3A%28activity%3A123%2C456%29';
+		$without->provider    = 'linkedin';
+		$without->remote_id   = '123.456';
+		$without->avatar      = '';
+		$without->author_name = 'Jordan Sample';
+		$without->content     = 'A different LinkedIn reply.';
+		$no_avatar            = Comment_Importer::import( $without );
+
+		$classes = Attribution::provider_comment_class( array( 'comment' ), array(), $with_avatar['comment_id'], get_comment( $with_avatar['comment_id'] ) );
+		$this->assertContains( 'swi-provider-x', $classes );
+		$this->assertNotContains( 'swi-no-avatar', $classes );
+
+		$classes = Attribution::provider_comment_class( array( 'comment' ), array(), $no_avatar['comment_id'], get_comment( $no_avatar['comment_id'] ) );
+		$this->assertContains( 'swi-provider-linkedin', $classes );
+		$this->assertContains( 'swi-no-avatar', $classes );
+
+		// A non-imported comment gets no swi classes.
+		$plain   = self::factory()->comment->create( array( 'comment_post_ID' => self::$post_id ) );
+		$classes = Attribution::provider_comment_class( array( 'comment' ), array(), $plain, get_comment( $plain ) );
+		$this->assertSame( array( 'comment' ), $classes );
+	}
+
 	public function test_registered_meta_is_typed_and_authorized() {
 		$registered = get_registered_meta_keys( 'comment' );
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0 — 2026-08-18
+
+- Imported comments carry `swi-provider-{provider}` and (when avatar-less)
+  `swi-no-avatar` comment classes. LinkedIn imports now show the network
+  badge with no author URL required, and comments without an avatar hide
+  the Gravatar placeholder instead of showing a mystery-man image.
+
 ## 0.3.0 — 2026-08-18
 
 - LinkedIn comment permalinks now auto-fill: comment IDs are snowflake
