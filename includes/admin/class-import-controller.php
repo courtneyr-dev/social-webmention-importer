@@ -130,6 +130,9 @@ class Import_Controller {
 		$rows    = isset( $_POST['rows'] ) && is_array( $_POST['rows'] ) ? wp_unslash( $_POST['rows'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- each field sanitized in apply_reviewer_edits().
 		$results = array();
 
+		// Explicit reviewer choice to publish on import (never a default).
+		$approve_now = ! empty( $_POST['swi_approve_now'] );
+
 		foreach ( $batch['records'] as $index => $stored ) {
 			$record = Preview_Record::from_array( $stored );
 			$row    = $rows[ $index ] ?? array();
@@ -167,7 +170,7 @@ class Import_Controller {
 				continue;
 			}
 
-			$result               = Comment_Importer::import( $record, $manual_fields );
+			$result               = Comment_Importer::import( $record, $manual_fields, $approve_now );
 			$result['source_url'] = $record->source_url;
 			$results[]            = $result;
 

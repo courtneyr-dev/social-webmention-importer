@@ -25,6 +25,37 @@ class Import_Page {
 	public static function init() {
 		add_action( 'admin_menu', array( static::class, 'register_page' ) );
 		add_action( 'admin_enqueue_scripts', array( static::class, 'enqueue_assets' ) );
+		add_action( 'enqueue_block_editor_assets', array( static::class, 'enqueue_editor_assets' ) );
+	}
+
+	/**
+	 * Enqueue the block-editor "Social responses" panel for users who may
+	 * import to the post being edited.
+	 */
+	public static function enqueue_editor_assets() {
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+		if ( ! $screen || 'post' !== $screen->base ) {
+			return;
+		}
+		if ( ! Plugin::user_can_import() ) {
+			return;
+		}
+
+		wp_enqueue_script(
+			'swi-editor',
+			SWI_PLUGIN_URL . 'assets/js/editor.js',
+			array( 'wp-plugins', 'wp-editor', 'wp-element', 'wp-components', 'wp-data', 'wp-i18n' ),
+			SWI_VERSION,
+			true
+		);
+		wp_localize_script(
+			'swi-editor',
+			'swiEditor',
+			array(
+				'adminPost' => admin_url( 'admin-post.php' ),
+				'nonce'     => wp_create_nonce( 'swi_preview' ),
+			)
+		);
 	}
 
 	/**
@@ -247,6 +278,13 @@ class Import_Page {
 			<?php foreach ( $batch['records'] as $index => $stored ) : ?>
 				<?php self::render_review_card( $index, Preview_Record::from_array( $stored ) ); ?>
 			<?php endforeach; ?>
+
+			<p>
+				<label for="swi-approve-now">
+					<input type="checkbox" name="swi_approve_now" id="swi-approve-now" value="1" />
+					<?php esc_html_e( 'Approve these responses immediately instead of holding them as pending. You reviewed each one above; this publishes them on import.', 'social-webmention-importer' ); ?>
+				</label>
+			</p>
 
 			<?php submit_button( __( 'Import selected responses', 'social-webmention-importer' ) ); ?>
 		</form>

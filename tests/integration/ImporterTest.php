@@ -262,6 +262,32 @@ class ImporterTest extends WP_UnitTestCase {
 		$this->assertTrue( Plugin::user_can_import( self::$post_id ) );
 	}
 
+	public function test_reviewer_approve_on_import() {
+		// Without moderation rights the approve request is ignored.
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'subscriber' ) ) );
+		$result = Comment_Importer::import( $this->curated_record(), array(), true );
+		$this->assertSame( '0', get_comment( $result['comment_id'] )->comment_approved );
+
+		// A moderator's explicit request publishes on import.
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		$record             = $this->curated_record();
+		$record->source_url = 'https://x.com/alexdoe/status/555';
+		$record->canonical_url = 'https://x.com/alexdoe/status/555';
+		$record->remote_id  = '555';
+		$record->content    = 'Approved-on-import content.';
+		$result             = Comment_Importer::import( $record, array(), true );
+		$this->assertSame( '1', get_comment( $result['comment_id'] )->comment_approved );
+
+		// Default stays pending.
+		$record             = $this->curated_record();
+		$record->source_url = 'https://x.com/alexdoe/status/556';
+		$record->canonical_url = 'https://x.com/alexdoe/status/556';
+		$record->remote_id  = '556';
+		$record->content    = 'Default pending content.';
+		$result             = Comment_Importer::import( $record );
+		$this->assertSame( '0', get_comment( $result['comment_id'] )->comment_approved );
+	}
+
 	public function test_provider_and_no_avatar_comment_classes() {
 		$with_avatar = Comment_Importer::import( $this->curated_record() );
 

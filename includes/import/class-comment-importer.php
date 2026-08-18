@@ -175,9 +175,12 @@ class Comment_Importer {
 	 *
 	 * @param Preview_Record $record        Reviewed record.
 	 * @param string[]       $manual_fields Fields the reviewer edited (locked on refresh).
+	 * @param bool           $approve       Approve on import. Only honored for users who can
+	 *                                      moderate comments; this is the "explicit reviewer
+	 *                                      action" the no-auto-publish rule requires.
 	 * @return array{status:string,comment_id:int,message:string}
 	 */
-	public static function import( Preview_Record $record, $manual_fields = array() ) {
+	public static function import( Preview_Record $record, $manual_fields = array(), $approve = false ) {
 		$valid = self::validate( $record );
 		if ( is_wp_error( $valid ) ) {
 			return array(
@@ -192,7 +195,11 @@ class Comment_Importer {
 		$commentdata = self::build_commentdata( $record, $manual_fields );
 
 		if ( $existing ) {
-			return self::update_existing( $existing, $record, $commentdata, $manual_fields );
+			$result = self::update_existing( $existing, $record, $commentdata, $manual_fields );
+			if ( self::UPDATED === $result['status'] ) {
+				self::maybe_approve( $result['comment_id'], $approve );
+			}
+			return $result;
 		}
 
 		// Force pending unless the site setting allows reviewer approval.
@@ -222,11 +229,30 @@ class Comment_Importer {
 			);
 		}
 
+		$approved = self::maybe_approve( (int) $comment_id, $approve );
+
 		return array(
 			'status'     => self::IMPORTED,
 			'comment_id' => (int) $comment_id,
-			'message'    => __( 'Imported (pending moderation).', 'social-webmention-importer' ),
+			'message'    => $approved
+				? __( 'Imported and approved.', 'social-webmention-importer' )
+				: __( 'Imported (pending moderation).', 'social-webmention-importer' ),
 		);
+	}
+
+	/**
+	 * Approve a freshly imported/updated comment when the reviewer asked
+	 * for it and is allowed to moderate.
+	 *
+	 * @param int  $comment_id Comment ID.
+	 * @param bool $approve    Whether the reviewer requested approval.
+	 * @return bool Whether the comment was approved.
+	 */
+	protected static function maybe_approve( $comment_id, $approve ) {
+		if ( ! $approve || ! $comment_id || ! current_user_can( 'moderate_comments' ) ) {
+			return false;
+		}
+		return (bool) wp_set_comment_status( $comment_id, 'approve' );
 	}
 
 	/**

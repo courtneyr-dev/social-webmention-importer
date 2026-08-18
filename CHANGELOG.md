@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.0 — 2026-08-18
+
+- Block editor integration: a "Social responses" document panel lets you
+  paste response URLs while editing the post; Preview hands the batch to
+  the importer's review screen with the post preselected.
+- "Approve these responses immediately" checkbox on the review screen —
+  an explicit per-batch reviewer action that publishes on import instead
+  of holding as pending. Ignored for users who cannot moderate comments.
+
 ## 0.4.0 — 2026-08-18
 
 - Imported comments carry `swi-provider-{provider}` and (when avatar-less)
