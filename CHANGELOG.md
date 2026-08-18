@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.1 — 2026-08-18
+
+- The importer now also appears beside Webmention under the IndieWeb
+  top-level menu when the IndieWeb plugin is active (as "Social
+  Importer", linking to the canonical Tools screen). Webmention itself
+  has no top-level menu — it lives under Settings, or under IndieWeb —
+  so this mirrors its placement.
+
 ## 0.5.0 — 2026-08-18
 
 - Block editor integration: a "Social responses" document panel lets you

@@ -262,6 +262,21 @@ class ImporterTest extends WP_UnitTestCase {
 		$this->assertTrue( Plugin::user_can_import( self::$post_id ) );
 	}
 
+	public function test_menu_registers_beside_webmention_under_indieweb() {
+		global $submenu;
+		require_once ABSPATH . 'wp-admin/includes/plugin.php';
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+
+		if ( ! class_exists( 'IndieWeb_Plugin' ) ) {
+			eval( 'class IndieWeb_Plugin {}' ); // phpcs:ignore Squiz.PHP.Eval.Discouraged -- test stub for the menu gate.
+		}
+
+		\CourtneyRDev\SocialWebmentionImporter\Admin\Import_Page::register_page();
+
+		$slugs = wp_list_pluck( $submenu['indieweb'] ?? array(), 2 );
+		$this->assertContains( 'tools.php?page=social-webmention-importer', $slugs );
+	}
+
 	public function test_reviewer_approve_on_import() {
 		// Without moderation rights the approve request is ignored.
 		wp_set_current_user( self::factory()->user->create( array( 'role' => 'subscriber' ) ) );

@@ -59,7 +59,12 @@ class Import_Page {
 	}
 
 	/**
-	 * Add the Tools submenu page.
+	 * Add the Tools submenu page, plus a companion entry beside Webmention.
+	 *
+	 * The Webmention plugin has no top-level menu of its own: it registers
+	 * under Settings, or under the IndieWeb plugin's top-level menu when
+	 * that plugin is active. When the IndieWeb menu exists, add a link
+	 * entry beside Webmention's pointing at the canonical Tools screen.
 	 */
 	public static function register_page() {
 		add_management_page(
@@ -69,6 +74,16 @@ class Import_Page {
 			'social-webmention-importer',
 			array( static::class, 'render' )
 		);
+
+		if ( class_exists( 'IndieWeb_Plugin' ) ) {
+			add_submenu_page(
+				'indieweb',
+				__( 'Social Webmention Importer', 'social-webmention-importer' ),
+				__( 'Social Importer', 'social-webmention-importer' ),
+				'moderate_comments',
+				'tools.php?page=social-webmention-importer'
+			);
+		}
 	}
 
 	/**
