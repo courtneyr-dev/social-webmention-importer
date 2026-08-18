@@ -24,8 +24,56 @@ class Import_Page {
 	 */
 	public static function init() {
 		add_action( 'admin_menu', array( static::class, 'register_page' ) );
+		add_action( 'admin_menu', array( static::class, 'nest_under_webmention_tools' ), 999 );
 		add_action( 'admin_enqueue_scripts', array( static::class, 'enqueue_assets' ) );
 		add_action( 'enqueue_block_editor_assets', array( static::class, 'enqueue_editor_assets' ) );
+	}
+
+	/**
+	 * Place the importer directly after Webmention's own Tools entry.
+	 *
+	 * The Webmention plugin registers Tools → Webmention (slug
+	 * `webmention-tools`). Admin submenus are flat, so "nesting" means
+	 * ordering: move our entry immediately below Webmention's so the two
+	 * read as a group. Runs late so both entries already exist; does
+	 * nothing when Webmention's entry is absent.
+	 */
+	public static function nest_under_webmention_tools() {
+		global $submenu;
+
+		if ( empty( $submenu['tools.php'] ) || ! is_array( $submenu['tools.php'] ) ) {
+			return;
+		}
+
+		$ours = null;
+		foreach ( $submenu['tools.php'] as $index => $item ) {
+			if ( 'social-webmention-importer' === ( $item[2] ?? '' ) ) {
+				$ours = $item;
+				unset( $submenu['tools.php'][ $index ] );
+				break;
+			}
+		}
+		if ( null === $ours ) {
+			return;
+		}
+
+		$entries = array_values( $submenu['tools.php'] );
+		$anchor  = null;
+		foreach ( $entries as $index => $item ) {
+			if ( 'webmention-tools' === ( $item[2] ?? '' ) ) {
+				$anchor = $index;
+				break;
+			}
+		}
+
+		if ( null === $anchor ) {
+			// No Webmention entry to nest under; restore original placement.
+			$entries[] = $ours;
+		} else {
+			array_splice( $entries, $anchor + 1, 0, array( $ours ) );
+		}
+
+		$submenu['tools.php'] = $entries;
 	}
 
 	/**

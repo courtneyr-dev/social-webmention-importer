@@ -277,6 +277,24 @@ class ImporterTest extends WP_UnitTestCase {
 		$this->assertContains( 'tools.php?page=social-webmention-importer', $slugs );
 	}
 
+	public function test_tools_entry_nests_directly_under_webmention() {
+		global $submenu;
+		require_once ABSPATH . 'wp-admin/includes/plugin.php';
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+
+		$submenu['tools.php'] = array();
+		add_submenu_page( 'tools.php', 'Import', 'Import', 'manage_options', 'import.php' );
+		\CourtneyRDev\SocialWebmentionImporter\Admin\Import_Page::register_page();
+		add_submenu_page( 'tools.php', 'Scheduled Actions', 'Scheduled Actions', 'manage_options', 'scheduled-actions' );
+		add_submenu_page( 'tools.php', 'Webmention', 'Webmention', 'manage_options', 'webmention-tools' );
+
+		\CourtneyRDev\SocialWebmentionImporter\Admin\Import_Page::nest_under_webmention_tools();
+
+		$slugs = array_values( wp_list_pluck( $submenu['tools.php'], 2 ) );
+		$wm    = array_search( 'webmention-tools', $slugs, true );
+		$this->assertSame( $wm + 1, array_search( 'social-webmention-importer', $slugs, true ) );
+	}
+
 	public function test_reviewer_approve_on_import() {
 		// Without moderation rights the approve request is ignored.
 		wp_set_current_user( self::factory()->user->create( array( 'role' => 'subscriber' ) ) );

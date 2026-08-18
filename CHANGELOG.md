@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.2 — 2026-08-18
+
+- The Tools entry now sits directly below Tools → Webmention (admin
+  submenus are flat, so nesting = ordering). Falls back to the default
+  position when Webmention's Tools entry is absent.
+
 ## 0.5.1 — 2026-08-18
 
 - The importer now also appears beside Webmention under the IndieWeb
