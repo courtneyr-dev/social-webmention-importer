@@ -25,8 +25,21 @@ class Import_Page {
 	public static function init() {
 		add_action( 'admin_menu', array( static::class, 'register_page' ) );
 		add_action( 'admin_menu', array( static::class, 'nest_under_webmention_tools' ), 999 );
+		add_action( 'admin_head', array( static::class, 'print_menu_indent_style' ) );
 		add_action( 'admin_enqueue_scripts', array( static::class, 'enqueue_assets' ) );
 		add_action( 'enqueue_block_editor_assets', array( static::class, 'enqueue_editor_assets' ) );
+	}
+
+	/**
+	 * Visually indent the Tools entry beneath Webmention's.
+	 *
+	 * The admin menu is hard-limited to two levels, so a true child
+	 * flyout isn't possible; an indent under the adjacent Webmention
+	 * entry conveys the relationship without hover-only UI, keeping the
+	 * item reachable by keyboard and touch.
+	 */
+	public static function print_menu_indent_style() {
+		echo '<style>#adminmenu .wp-submenu a[href="tools.php?page=social-webmention-importer"]{padding-left:24px;}</style>';
 	}
 
 	/**

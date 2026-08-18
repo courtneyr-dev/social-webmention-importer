@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.3 — 2026-08-18
+
+- Indent the Tools entry beneath Webmention's so the pair reads as
+  parent/child. (The admin menu is limited to two levels, so a true
+  hover flyout isn't possible without inaccessible hover-only UI.)
+
 ## 0.5.2 — 2026-08-18
 
 - The Tools entry now sits directly below Tools → Webmention (admin
