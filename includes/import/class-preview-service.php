@@ -171,6 +171,12 @@ class Preview_Service {
 		if ( Target_Verifier::body_contains_target( $record->raw_body, $target ) ) {
 			$record->verification = 'verified';
 			$record->mode         = Plugin::MODE_WEBMENTION;
+		} elseif ( $this->short_links_reach_target( $record->raw_body, $target ) ) {
+			// Providers rewrite outbound links (lnkd.in, t.co), so the
+			// literal target may only exist behind the shortener.
+			$record->verification = 'verified';
+			$record->mode         = Plugin::MODE_WEBMENTION;
+			$record->warnings[]   = __( 'The link to this post is wrapped in the network’s URL shortener; it was expanded and verified.', 'social-webmention-importer' );
 		} else {
 			$record->verification = 'unverified';
 			$record->mode         = Plugin::MODE_SOCIAL_LINKBACK;
@@ -179,6 +185,26 @@ class Preview_Service {
 
 		// The raw body has served verification; drop it (never persisted).
 		$record->raw_body = '';
+	}
+
+	/**
+	 * Whether any provider short link in the body resolves to the target.
+	 *
+	 * Fetches at most five unique short links through the same constrained
+	 * fetcher used for sources.
+	 *
+	 * @param string $body   Fetched source document.
+	 * @param string $target Target permalink.
+	 * @return bool
+	 */
+	protected function short_links_reach_target( $body, $target ) {
+		foreach ( Target_Verifier::find_short_links( $body ) as $short_url ) {
+			$response = call_user_func( $this->fetcher, $short_url );
+			if ( Target_Verifier::short_link_resolves_to_target( $response, $target ) ) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**

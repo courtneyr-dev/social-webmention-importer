@@ -27,17 +27,28 @@ always degrades to editable manual fields, never to wrong data.
 
 ## LinkedIn
 
-- Logged-out access is inconsistent: many `/posts/…` URLs return the full
-  page with JSON-LD (best case), others an authwall or HTTP 999. Blocked
-  pages degrade to manual-review rows with the handle/profile candidates
-  derived from the URL. **No cookies, tokens, or automation are ever used.**
-- When JSON-LD is served, the `Person` author (name, profile, photo) and
-  `articleBody`/`datePublished` are reliable.
+- Logged-out access is inconsistent: many `/posts/…` and `/feed/update/…`
+  URLs return the full page with JSON-LD (best case — verified live against
+  a real public activity page on 2026-08-18), others an authwall or HTTP
+  999. Blocked pages degrade to manual-review rows with the handle/profile
+  candidates derived from the URL. **No cookies, tokens, or automation are
+  ever used.**
+- When JSON-LD is served, the post's `SocialMediaPosting` block is rich: the
+  `Person` author (name, profile URL, real profile photo), full
+  `articleBody`, exact `datePublished`, and the public comment thread
+  (author names, text, dates — but no comment IDs or profile links).
+- **Link rewriting:** LinkedIn wraps outbound links in `lnkd.in` short links
+  (200 interstitial pages, not redirects). Verification expands up to five
+  short links per source and checks the interstitial/redirect destination,
+  so a post whose only article link is `lnkd.in`-wrapped still verifies as
+  a Webmention (flagged in the preview warnings).
+- **Comment permalinks** (`…?commentUrn=urn:li:comment:(activity:…,…)`)
+  dedupe as their own remote item, and never inherit the post author's
+  identity. Because public JSON-LD comments carry no IDs, the exact comment
+  cannot be auto-matched: the preview lists the public commenter names and
+  the reviewer fills in the author and text.
 - `og:image` is a share card or company branding — never used as an avatar.
 - `og:description` is usually truncated; JSON-LD `articleBody` is preferred.
-- During verification of this release, no fully public LinkedIn post for the
-  target article was available to exercise the happy path live; it is covered
-  by sanitized fixtures instead, and the blocked path was verified live.
 
 ## Generic (other sites)
 

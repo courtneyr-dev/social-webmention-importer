@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.0 — 2026-08-18
+
+- Verification now expands provider link shorteners (`lnkd.in`
+  interstitials, `t.co` redirects, up to five per source), so a LinkedIn
+  post whose article link is rewritten by the network still verifies as a
+  Webmention. Verified live against a real public activity page.
+- LinkedIn activity pages (`/feed/update/urn:li:activity:…`) extract the
+  full post author (name, profile URL, real avatar), text, and exact
+  publish time from JSON-LD.
+- LinkedIn comment permalinks (`commentUrn=…`) dedupe as their own remote
+  item and no longer risk inheriting the post author's identity; the
+  preview lists the thread's public commenter names for manual fill-in.
+
 ## 0.1.0 — 2026-08-18
 
 Initial release.
