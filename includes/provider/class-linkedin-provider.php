@@ -242,15 +242,73 @@ class LinkedIn_Provider implements Provider {
 	}
 
 	/**
-	 * Fill a comment-permalink record with reviewer guidance.
+	 * Milliseconds a decoded comment-ID timestamp may differ from a JSON-LD
+	 * comment's datePublished and still count as the same comment.
+	 *
+	 * Observed live deltas are ≤ 1 ms; 2 s absorbs clock/rounding noise
+	 * while staying far below typical comment spacing.
+	 *
+	 * @var int
+	 */
+	const SNOWFLAKE_MATCH_TOLERANCE_MS = 2000;
+
+	/**
+	 * Decode the creation time embedded in a LinkedIn snowflake ID.
+	 *
+	 * LinkedIn activity and comment IDs carry a millisecond Unix timestamp
+	 * in their upper bits (id >> 22), like Twitter snowflakes. Verified
+	 * against live data: the post's decoded time matches its JSON-LD
+	 * datePublished to within tens of milliseconds, comments to ~1 ms.
+	 *
+	 * @param string $id Numeric snowflake ID.
+	 * @return int Millisecond Unix timestamp, 0 when the ID is not numeric.
+	 */
+	public static function snowflake_timestamp_ms( $id ) {
+		if ( ! ctype_digit( (string) $id ) ) {
+			return 0;
+		}
+		return (int) ( (int) $id >> 22 );
+	}
+
+	/**
+	 * Fill a comment-permalink record from the thread's public data.
+	 *
+	 * The comment URN's snowflake timestamp is matched against the JSON-LD
+	 * comments' datePublished; a match within tolerance auto-fills the
+	 * reply's author, text, and date. Comments outside the page's public
+	 * JSON-LD subset (LinkedIn lists only part of long threads) fall back
+	 * to manual entry with the visible commenter names as guidance.
 	 *
 	 * @param Preview_Record $record Preview record.
 	 * @param string         $body   Fetched page HTML.
 	 */
 	protected function describe_comment_thread( Preview_Record $record, $body ) {
-		$record->warnings[] = __( 'This is a comment permalink. LinkedIn’s public data doesn’t identify which comment it points to, so fill the author and text manually from the post page.', 'social-webmention-importer' );
-
 		$comments = self::public_comments( $body );
+		$urn      = self::comment_urn_from_url( $record->source_url );
+		$target   = $urn ? self::snowflake_timestamp_ms( $urn['comment'] ) : 0;
+
+		if ( $target && $comments ) {
+			foreach ( $comments as $comment ) {
+				$published = \DateTimeImmutable::createFromFormat( 'Y-m-d\TH:i:s.v\Z', $comment['published'], new \DateTimeZone( 'UTC' ) );
+				if ( ! $published ) {
+					continue;
+				}
+				$delta = abs( (int) $published->format( 'Uv' ) - $target );
+				if ( $delta > self::SNOWFLAKE_MATCH_TOLERANCE_MS ) {
+					continue;
+				}
+
+				$record->offer( 'author_name', Author_Resolver::refuse_network_name( $comment['name'] ), 'jsonld' );
+				$record->offer( 'content', Content_Resolver::tidy_whitespace( $comment['text'] ), 'jsonld' );
+				$record->offer( 'published_gmt', $published->format( 'Y-m-d H:i:s' ), 'jsonld' );
+				$record->warnings[] = __( 'Reply matched to its public comment by the ID’s embedded timestamp; confirm the author and text look right.', 'social-webmention-importer' );
+				$record->warnings[] = __( 'LinkedIn does not expose commenters’ profile URLs or avatars publicly; add them manually or from a saved identity.', 'social-webmention-importer' );
+				return;
+			}
+		}
+
+		$record->warnings[] = __( 'This is a comment permalink, but the comment is not in the page’s public data (LinkedIn lists only part of long threads). Fill the author and text manually from the post page.', 'social-webmention-importer' );
+
 		if ( $comments ) {
 			$names              = array_slice( array_filter( wp_list_pluck( $comments, 'name' ) ), 0, 8 );
 			$record->warnings[] = sprintf(

@@ -161,6 +161,17 @@ class Preview_Service {
 			return;
 		}
 
+		/**
+		 * Filters the URL the source must contain to verify.
+		 *
+		 * Lets a staging site verify sources that link to the production
+		 * permalink instead of the staging domain.
+		 *
+		 * @param string         $target Target permalink.
+		 * @param Preview_Record $record The record being verified.
+		 */
+		$target = apply_filters( 'swi_verification_target_url', $target, $record );
+
 		if ( '' === $record->raw_body ) {
 			$record->verification = 'unknown';
 			$record->mode         = Plugin::MODE_SOCIAL_LINKBACK;

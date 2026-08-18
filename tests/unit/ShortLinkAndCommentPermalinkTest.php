@@ -150,6 +150,43 @@ class ShortLinkAndCommentPermalinkTest extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'Riley Fixture, Casey Sample', implode( ' ', $record->warnings ) );
 	}
 
+	public function test_snowflake_timestamp_decoding() {
+		// Real activity ID from a live page: decodes to its datePublished.
+		$this->assertEqualsWithDelta(
+			strtotime( '2026-08-17T15:09:54Z' ) * 1000,
+			LinkedIn_Provider::snowflake_timestamp_ms( '7495134822533689344' ),
+			1500
+		);
+		$this->assertSame( 0, LinkedIn_Provider::snowflake_timestamp_ms( 'not-a-number' ) );
+	}
+
+	public function test_comment_permalink_auto_matches_by_snowflake_timestamp() {
+		// Build a comment ID whose embedded timestamp equals the fixture's
+		// first comment (Riley Fixture, 2026-08-17T15:39:50.312Z).
+		$ms = (int) ( new \DateTimeImmutable( '2026-08-17T15:39:50.312Z' ) )->format( 'Uv' );
+		$id = (string) ( ( $ms << 22 ) + 12345 );
+
+		$provider           = new LinkedIn_Provider();
+		$record             = new Preview_Record();
+		$record->source_url = 'https://www.linkedin.com/feed/update/urn:li:activity:7000000000000000001/?commentUrn=' . rawurlencode( "urn:li:comment:(activity:7000000000000000001,{$id})" );
+		$record->provider   = 'linkedin';
+		$normalized         = $provider->normalize( $record->source_url );
+		$record->canonical_url = $normalized['canonical'];
+		$record->remote_id     = $normalized['remote_id'];
+
+		$provider->extract(
+			$record,
+			Fixtures::fetcher( array( 'linkedin.com/feed/update' => Fixtures::get( 'linkedin-activity.html' ) ) )
+		);
+
+		$this->assertSame( 'Riley Fixture', $record->author_name );
+		$this->assertSame( 'Wonderful article, congratulations!', $record->content );
+		$this->assertSame( '2026-08-17 15:39:50', $record->published_gmt );
+		// Still never the post author's identity or avatar.
+		$this->assertNotSame( 'Jordan Sample', $record->author_name );
+		$this->assertSame( '', $record->avatar );
+	}
+
 	public function test_public_comments_are_listed_from_jsonld() {
 		$comments = LinkedIn_Provider::public_comments( Fixtures::get( 'linkedin-activity.html' ) );
 

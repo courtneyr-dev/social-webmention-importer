@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0 — 2026-08-18
+
+- LinkedIn comment permalinks now auto-fill: comment IDs are snowflake
+  timestamps (id >> 22 = ms epoch), matched against the thread's public
+  JSON-LD comments' datePublished (±2 s; live deltas are ~1 ms). Matched
+  replies get their author name, text, and exact date; comments outside
+  the page's public subset still fall back to manual entry.
+- New `swi_verification_target_url` filter so staging can verify sources
+  that link to the production permalink.
+
 ## 0.2.0 — 2026-08-18
 
 - Verification now expands provider link shorteners (`lnkd.in`
