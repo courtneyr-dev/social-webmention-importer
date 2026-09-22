@@ -64,6 +64,15 @@ class Target_Verifier {
 			// would mean the match sits inside a longer domain such as
 			// `not-courtneyr.dev` or a subdomain of an attacker's site).
 			if ( '' === $before || ! preg_match( '/[A-Za-z0-9.-]/', $before ) ) {
+				// Reject partial-path matches too: the character after the
+				// match must end the path/URL rather than extend it, or a
+				// link to `/post-two/` would wrongly verify `/post/`.
+				$next = substr( $haystack, $pos + strlen( $needle ), 1 );
+				if ( '' !== $next && ! in_array( $next, array( '/', '?', '#', '"', "'", ' ', '<', '&', "\n" ), true ) ) {
+					$offset = $pos + 1;
+					continue;
+				}
+
 				return true;
 			}
 

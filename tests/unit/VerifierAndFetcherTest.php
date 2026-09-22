@@ -38,6 +38,17 @@ class VerifierAndFetcherTest extends WP_UnitTestCase {
 		$this->assertFalse( Target_Verifier::body_contains_target( $subdomain_attack, 'https://example-blog.test/2026/08/17/sample-article/' ) );
 	}
 
+	public function test_link_to_a_longer_path_does_not_verify_a_shorter_target() {
+		$body = '<a href="https://example-blog.test/post-two/">reply</a>';
+		$this->assertFalse( Target_Verifier::body_contains_target( $body, 'https://example-blog.test/post/' ) );
+	}
+
+	public function test_exact_path_still_verifies_alongside_a_longer_lookalike() {
+		$body = '<p>See <a href="https://example-blog.test/post-two/">post two</a> and '
+			. '<a href="https://example-blog.test/post/">the original</a>.</p>';
+		$this->assertTrue( Target_Verifier::body_contains_target( $body, 'https://example-blog.test/post/' ) );
+	}
+
 	public function test_missing_link_does_not_verify() {
 		$this->assertFalse( Target_Verifier::body_contains_target( Fixtures::get( 'x-status-media-og.html' ), 'https://example-blog.test/2026/08/17/sample-article/' ) );
 	}
