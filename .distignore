@@ -1,0 +1,17 @@
+# Development and test files
+/tests
+/docs
+/.github
+/vendor
+
+# Config and tooling
+/phpunit.xml.dist
+/.phpcs.xml.dist
+/.phpunit.result.cache
+composer.json
+composer.lock
+.gitignore
+.distignore
+
+# OS files
+.DS_Store
