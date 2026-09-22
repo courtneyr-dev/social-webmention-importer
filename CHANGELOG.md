@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.4 — 2026-09-22
+
+- Security hardening: the fetch-policy redirect guard now runs on every
+  redirect hop instead of a filter that never re-fired for internal
+  redirects; target verification now checks the character after a match
+  too, so a source linking only to a longer path no longer verifies a
+  shorter target; a stored reviewer-confirmed identity is no longer
+  applied off an unconfirmed, path-derived handle guess.
+- Every file under `includes/` now refuses to run outside WordPress.
+- Imported comments no longer inherit the reviewing admin's IP address.
+- Added `.distignore` so a packaged build excludes tests, docs, and dev
+  tooling config.
+
 ## 0.5.3 — 2026-08-18
 
 - Indent the Tools entry beneath Webmention's so the pair reads as
