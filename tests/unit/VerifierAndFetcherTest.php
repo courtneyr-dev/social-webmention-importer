@@ -8,6 +8,7 @@
 namespace CourtneyRDev\SocialWebmentionImporter\Tests\Unit;
 
 use CourtneyRDev\SocialWebmentionImporter\Http\Safe_Fetcher;
+use CourtneyRDev\SocialWebmentionImporter\Import\Identity_Store;
 use CourtneyRDev\SocialWebmentionImporter\Import\Preview_Service;
 use CourtneyRDev\SocialWebmentionImporter\Tests\Fixtures;
 use CourtneyRDev\SocialWebmentionImporter\Verification\Target_Verifier;
@@ -16,7 +17,7 @@ use WP_UnitTestCase;
 /**
  * @covers \CourtneyRDev\SocialWebmentionImporter\Verification\Target_Verifier
  * @covers \CourtneyRDev\SocialWebmentionImporter\Http\Safe_Fetcher::validate_url
- * @covers \CourtneyRDev\SocialWebmentionImporter\Import\Preview_Service::parse_url_list
+ * @covers \CourtneyRDev\SocialWebmentionImporter\Import\Preview_Service
  */
 class VerifierAndFetcherTest extends WP_UnitTestCase {
 
@@ -97,6 +98,28 @@ class VerifierAndFetcherTest extends WP_UnitTestCase {
 		// No exception means the hop is allowed through.
 		$fetcher->reject_unsafe_redirect( 'https://example.org/redirected', array(), null, array() );
 		$this->addToAssertionCount( 1 );
+	}
+
+	public function test_identity_store_is_not_applied_off_an_unverified_path_handle() {
+		Identity_Store::save(
+			'x',
+			array(
+				'handle' => 'alexdoe',
+				'name'   => 'Someone Else Entirely',
+				'url'    => 'https://x.com/someone-else',
+				'avatar' => 'https://example.org/someone-else.jpg',
+			)
+		);
+
+		// Both fetches fail (nothing is served), so extraction never
+		// confirms the handle beyond the path-derived guess.
+		$service = new Preview_Service( null, Fixtures::fetcher( array() ) );
+		$record  = $service->preview_url( 'https://x.com/alexdoe/status/1234567890123456789', 999999 );
+
+		$this->assertSame( 'alexdoe', $record->author_handle );
+		$this->assertSame( 'path-handle', $record->extraction['author_handle'] ?? 'none' );
+		$this->assertSame( '', $record->author_name );
+		$this->assertNotSame( 'Someone Else Entirely', $record->author_name );
 	}
 
 	public function test_url_list_parsing_tolerates_blank_lines_and_enforces_the_cap() {

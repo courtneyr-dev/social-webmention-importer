@@ -107,8 +107,16 @@ class Preview_Service {
 
 		$provider->extract( $record, $this->fetcher );
 
-		// Reviewer-confirmed identities outrank every parser source.
-		Identity_Store::apply( $record );
+		// Reviewer-confirmed identities outrank every parser source, but
+		// only once extraction has actually confirmed the handle. Looking
+		// the store up off the unverified path-derived guess (e.g. when
+		// every fetch failed) risks matching a completely different
+		// person's stored identity by coincidence and attributing it here.
+		$handle_method = $record->extraction['author_handle'] ?? 'none';
+		$handle_rank   = Preview_Record::CONFIDENCE[ $handle_method ] ?? 0;
+		if ( $handle_rank > Preview_Record::CONFIDENCE['path-handle'] ) {
+			Identity_Store::apply( $record );
+		}
 
 		$this->verify( $record );
 		$this->flag_duplicates( $record );
