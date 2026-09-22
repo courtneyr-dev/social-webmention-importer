@@ -81,7 +81,7 @@ class Target_Verifier {
 			}
 
 			$offset = $pos + 1;
-		}
+		}//end for
 
 		return false;
 	}
