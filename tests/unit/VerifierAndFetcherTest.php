@@ -69,6 +69,25 @@ class VerifierAndFetcherTest extends WP_UnitTestCase {
 		$this->assertTrue( Safe_Fetcher::validate_url( 'https://x.com/alexdoe/status/123' ) );
 	}
 
+	public function test_redirect_guard_rejects_a_blocked_hop() {
+		$fetcher = new Safe_Fetcher();
+
+		$this->expectException( \WpOrg\Requests\Exception::class );
+		$this->expectExceptionMessage( 'Redirect target blocked' );
+
+		// Simulates the `requests-requests.before_redirect` call Requests
+		// makes for a real redirect hop, without any network I/O.
+		$fetcher->reject_unsafe_redirect( 'http://169.254.169.254/', array(), null, array() );
+	}
+
+	public function test_redirect_guard_allows_a_safe_hop() {
+		$fetcher = new Safe_Fetcher();
+
+		// No exception means the hop is allowed through.
+		$fetcher->reject_unsafe_redirect( 'https://example.org/redirected', array(), null, array() );
+		$this->addToAssertionCount( 1 );
+	}
+
 	public function test_url_list_parsing_tolerates_blank_lines_and_enforces_the_cap() {
 		$raw = "  https://x.com/a/status/1  \n\n\nhttps://x.com/a/status/2\r\n   \r\n";
 

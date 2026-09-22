@@ -63,8 +63,13 @@ class Safe_Fetcher {
 
 		// Core does NOT block link-local/reserved ranges — notably
 		// 169.254.169.254, the cloud-metadata endpoint — so check IP
-		// literals against the full private+reserved set ourselves.
-		if ( self::is_blocked_ip_literal( $parsed['host'] ) ) {
+		// literals against the full private+reserved set ourselves. A
+		// hostname (rather than an IP literal already) is resolved first,
+		// so a name that merely points at a blocked range is caught too.
+		$host = trim( (string) $parsed['host'], '[]' );
+		$ip   = filter_var( $host, FILTER_VALIDATE_IP ) ? $host : gethostbyname( $host );
+
+		if ( self::is_blocked_ip_literal( $ip ) ) {
 			return new WP_Error( 'swi_unsafe_url', __( 'The URL points at a host this site refuses to fetch.', 'social-webmention-importer' ) );
 		}
 
@@ -129,18 +134,17 @@ class Safe_Fetcher {
 		);
 		$args     = wp_parse_args( $args, $defaults );
 
-		// Re-validate every hop: wp_safe_remote_get() re-checks redirect
-		// targets with core rules, and this guard adds the link-local /
-		// reserved-range rejection core lacks (pre_http_request fires for
-		// the initial request and again for each internal redirect request).
-		$hop_guard = function ( $preempt, $parsed_args, $request_url ) {
-			$host = (string) wp_parse_url( $request_url, PHP_URL_HOST );
-			if ( self::is_blocked_ip_literal( $host ) ) {
-				return new WP_Error( 'swi_unsafe_redirect', __( 'A redirect pointed at a host this site refuses to fetch.', 'social-webmention-importer' ) );
-			}
-			return $preempt;
-		};
-		add_filter( 'pre_http_request', $hop_guard, 5, 3 );
+		// Re-validate every hop: Requests follows redirects *inside* a
+		// single Requests::request() call, so `pre_http_request` — a
+		// WP_Http-level filter checked once before that call — never fires
+		// again for an internal redirect and cannot block one.
+		// `requests-requests.before_redirect` is the WordPress action
+		// WP_HTTP_Requests_Hooks bridges from the Requests library's own
+		// `requests.before_redirect` hook, dispatched once per hop (the
+		// same mechanism core's own `reject_unsafe_urls` uses), so this is
+		// where a redirect guard actually runs.
+		$guard = new self();
+		add_action( 'requests-requests.before_redirect', array( $guard, 'reject_unsafe_redirect' ), 10, 4 );
 
 		$response = wp_safe_remote_get(
 			$url,
@@ -152,7 +156,7 @@ class Safe_Fetcher {
 			)
 		);
 
-		remove_filter( 'pre_http_request', $hop_guard, 5 );
+		remove_action( 'requests-requests.before_redirect', array( $guard, 'reject_unsafe_redirect' ), 10 );
 
 		if ( is_wp_error( $response ) ) {
 			return $response;
@@ -180,5 +184,25 @@ class Safe_Fetcher {
 			'content_type' => wp_remote_retrieve_header( $response, 'content-type' ),
 			'final_url'    => (string) ( $response['http_response'] ?? null ? $response['http_response']->get_response_object()->url : $url ),
 		);
+	}
+
+	/**
+	 * Reject a redirect target the fetch policy does not allow.
+	 *
+	 * Hooked to `requests-requests.before_redirect` for the lifetime of one
+	 * `get()` call. Throwing here is caught by WP_Http::request() and
+	 * surfaces to the caller as a WP_Error, matching every other rejection
+	 * in this class.
+	 *
+	 * @param string $location Redirect target URL.
+	 * @param array  $headers  Request headers for the next hop.
+	 * @param mixed  $data     Request body for the next hop.
+	 * @param array  $options  Requests options for the next hop.
+	 * @throws \WpOrg\Requests\Exception When the redirect target is blocked.
+	 */
+	public function reject_unsafe_redirect( $location, $headers, $data, $options ): void {
+		if ( is_wp_error( $this->validate_url( (string) $location ) ) ) {
+			throw new \WpOrg\Requests\Exception( 'Redirect target blocked', 'swi.redirect_blocked' );
+		}
 	}
 }

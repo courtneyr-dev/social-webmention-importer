@@ -15,12 +15,21 @@
   `wp_safe_remote_get()`: HTTP(S) only, no credentials in URLs, 10 s timeout,
   3 redirects, 1 MB response cap.
 - Core's `wp_http_validate_url()` rejects loopback and RFC-1918 hosts, and is
-  re-applied to every redirect hop by `wp_safe_remote_get()`.
+  re-applied to every redirect hop by `wp_safe_remote_get()` (it registers a
+  `requests.before_redirect` check directly on the Requests library, since
+  redirects happen inside one `Requests::request()` call and never re-enter
+  `WP_Http::request()`).
 - **Additional hardening:** core does *not* reject link-local/reserved ranges
   (notably `169.254.169.254`, the cloud-metadata endpoint). `Safe_Fetcher`
-  rejects IP literals in private, loopback, link-local, and reserved ranges
-  itself — both up front and per redirect hop via a `pre_http_request` guard.
-  Discovered while writing the SSRF test suite; consider reporting upstream.
+  resolves hostnames and rejects IP literals — the original or the resolved
+  one — in private, loopback, link-local, and reserved ranges itself, both
+  up front (`validate_url()`) and per redirect hop via a
+  `requests-requests.before_redirect` action (the WordPress action
+  `WP_HTTP_Requests_Hooks` bridges from that same Requests-level hook).
+  `pre_http_request` was tried first but never actually fires for an
+  internal redirect, so a guard registered there never runs; discovered
+  while writing the SSRF test suite, along with the missing range check
+  itself — consider reporting the latter upstream.
 - The browser never chooses fetch endpoints: it posts URLs, the server
   validates and fetches them.
 - DNS-rebinding (a hostname resolving to an internal IP) is out of scope for
