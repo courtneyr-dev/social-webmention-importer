@@ -7,6 +7,10 @@
 
 namespace CourtneyRDev\SocialWebmentionImporter;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 use CourtneyRDev\SocialWebmentionImporter\Admin\Import_Controller;
 use CourtneyRDev\SocialWebmentionImporter\Admin\Import_Page;
 use CourtneyRDev\SocialWebmentionImporter\Display\Attribution;

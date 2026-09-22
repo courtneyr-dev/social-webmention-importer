@@ -7,6 +7,10 @@
 
 namespace CourtneyRDev\SocialWebmentionImporter\Provider;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 use CourtneyRDev\SocialWebmentionImporter\Import\Preview_Record;
 use CourtneyRDev\SocialWebmentionImporter\Parsing\Author_Resolver;
 use CourtneyRDev\SocialWebmentionImporter\Parsing\Avatar_Resolver;

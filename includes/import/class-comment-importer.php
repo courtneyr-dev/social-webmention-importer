@@ -7,6 +7,10 @@
 
 namespace CourtneyRDev\SocialWebmentionImporter\Import;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 use CourtneyRDev\SocialWebmentionImporter\Plugin;
 use WP_Error;
 

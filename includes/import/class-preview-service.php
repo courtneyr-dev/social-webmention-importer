@@ -7,6 +7,10 @@
 
 namespace CourtneyRDev\SocialWebmentionImporter\Import;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 use CourtneyRDev\SocialWebmentionImporter\Http\Safe_Fetcher;
 use CourtneyRDev\SocialWebmentionImporter\Plugin;
 use CourtneyRDev\SocialWebmentionImporter\Provider\Provider_Registry;
