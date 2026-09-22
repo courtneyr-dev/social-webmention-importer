@@ -104,6 +104,17 @@ class ImporterTest extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'screen-reader-text', $text );
 	}
 
+	public function test_imported_comment_never_carries_the_reviewing_admin_ip() {
+		$result  = Comment_Importer::import( $this->curated_record() );
+		$comment = get_comment( $result['comment_id'] );
+
+		// The comment records a curated snapshot of someone else's public
+		// post, not a real submission from this request; stamping the
+		// reviewing admin's own REMOTE_ADDR on it would misattribute their
+		// IP to the imported author.
+		$this->assertSame( '', $comment->comment_author_IP );
+	}
+
 	public function test_verified_import_uses_webmention_schema() {
 		$result  = Comment_Importer::import( $this->verified_record() );
 		$comment = get_comment( $result['comment_id'] );
