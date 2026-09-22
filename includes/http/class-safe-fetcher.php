@@ -148,7 +148,7 @@ class Safe_Fetcher {
 		// same mechanism core's own `reject_unsafe_urls` uses), so this is
 		// where a redirect guard actually runs.
 		$guard = new self();
-		add_action( 'requests-requests.before_redirect', array( $guard, 'reject_unsafe_redirect' ), 10, 4 );
+		add_action( 'requests-requests.before_redirect', array( $guard, 'reject_unsafe_redirect' ), 10, 1 );
 
 		$response = wp_safe_remote_get(
 			$url,
@@ -194,17 +194,15 @@ class Safe_Fetcher {
 	 * Reject a redirect target the fetch policy does not allow.
 	 *
 	 * Hooked to `requests-requests.before_redirect` for the lifetime of one
-	 * `get()` call. Throwing here is caught by WP_Http::request() and
-	 * surfaces to the caller as a WP_Error, matching every other rejection
-	 * in this class.
+	 * `get()` call (only the redirect target is needed, so `add_action()`
+	 * requests just that one argument of the four the hook provides).
+	 * Throwing here is caught by WP_Http::request() and surfaces to the
+	 * caller as a WP_Error, matching every other rejection in this class.
 	 *
 	 * @param string $location Redirect target URL.
-	 * @param array  $headers  Request headers for the next hop.
-	 * @param mixed  $data     Request body for the next hop.
-	 * @param array  $options  Requests options for the next hop.
 	 * @throws \WpOrg\Requests\Exception When the redirect target is blocked.
 	 */
-	public function reject_unsafe_redirect( $location, $headers, $data, $options ): void {
+	public function reject_unsafe_redirect( $location ): void {
 		if ( is_wp_error( $this->validate_url( (string) $location ) ) ) {
 			throw new \WpOrg\Requests\Exception( 'Redirect target blocked', 'swi.redirect_blocked' );
 		}
