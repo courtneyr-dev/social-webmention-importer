@@ -171,6 +171,19 @@ class LinkedIn_Provider implements Provider {
 			$record->offer( 'author_name', Author_Resolver::refuse_network_name( $person['name'] ), 'jsonld' );
 			$record->offer( 'author_url', esc_url_raw( $person['url'] ), 'jsonld' );
 			$record->offer( 'avatar', Avatar_Resolver::from_jsonld_person( $person['image'] ), 'jsonld' );
+
+			// Corroborate the path-derived handle: the JSON-LD author URL
+			// independently confirms the same public profile, so a handle
+			// that already matches it can be trusted at jsonld confidence
+			// instead of sitting at the unverified path-handle guess (the
+			// identity store's own lookup gate in
+			// Preview_Service::preview_url() requires this).
+			if ( preg_match( '#^/in/([^/]+)#i', (string) wp_parse_url( (string) $person['url'], PHP_URL_PATH ), $handle_match )
+				&& $record->author_handle
+				&& 0 === strcasecmp( $handle_match[1], $record->author_handle )
+			) {
+				$record->offer( 'author_handle', $handle_match[1], 'jsonld' );
+			}
 		}
 
 		// 2./3. Explicit metadata and OG/title patterns.

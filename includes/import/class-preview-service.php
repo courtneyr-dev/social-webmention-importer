@@ -112,13 +112,21 @@ class Preview_Service {
 		$provider->extract( $record, $this->fetcher );
 
 		// Reviewer-confirmed identities outrank every parser source, but
-		// only once extraction has actually confirmed the handle. Looking
-		// the store up off the unverified path-derived guess (e.g. when
-		// every fetch failed) risks matching a completely different
-		// person's stored identity by coincidence and attributing it here.
-		$handle_method = $record->extraction['author_handle'] ?? 'none';
-		$handle_rank   = Preview_Record::CONFIDENCE[ $handle_method ] ?? 0;
-		if ( $handle_rank > Preview_Record::CONFIDENCE['path-handle'] ) {
+		// only once extraction has actually confirmed whichever field
+		// Identity_Store::key() will look the store up by — the handle
+		// when one is set, otherwise the author URL. Gating on
+		// author_handle alone missed most providers: LinkedIn and generic
+		// sources never raise the handle's own confidence (LinkedIn
+		// confirms the profile via author_url; generic sources have no
+		// handle at all), so the gate blocked the store even when a real
+		// parser signal had confirmed the identity. Looking the store up
+		// off the bare, unverified path-derived guess (e.g. when every
+		// fetch failed) is what stays blocked: it risks matching a
+		// completely different person's stored identity by coincidence.
+		$key_field  = '' !== $record->author_handle ? 'author_handle' : 'author_url';
+		$key_method = $record->extraction[ $key_field ] ?? 'none';
+		$key_rank   = Preview_Record::CONFIDENCE[ $key_method ] ?? 0;
+		if ( $key_rank > Preview_Record::CONFIDENCE['path-handle'] ) {
 			Identity_Store::apply( $record );
 		}
 

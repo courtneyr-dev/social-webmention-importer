@@ -181,6 +181,86 @@ class VerifierAndFetcherTest extends WP_UnitTestCase {
 		$this->assertNotSame( 'Someone Else Entirely', $record->author_name );
 	}
 
+	public function test_identity_store_applies_when_x_oembed_alone_confirms_the_handle() {
+		Identity_Store::save(
+			'x',
+			array(
+				'handle' => 'alexdoe',
+				'name'   => 'The Real Alex Doe',
+				'url'    => 'https://x.com/alexdoe',
+				'avatar' => 'https://example.org/real-alex.jpg',
+			)
+		);
+
+		// oEmbed succeeds and its author_url corroborates the path-derived
+		// handle; the OG page fetch fails, so oEmbed alone confirms it.
+		$service = new Preview_Service(
+			null,
+			Fixtures::fetcher(
+				array(
+					'publish.twitter.com/oembed' => Fixtures::get( 'x-oembed.json' ),
+				)
+			)
+		);
+		$record  = $service->preview_url( 'https://x.com/alexdoe/status/1234567890123456789', 999999 );
+
+		// identity-store outranks oembed, so a successful apply() leaves
+		// this as the final method — proof the store really did apply,
+		// not just that the name happens to match.
+		$this->assertSame( 'identity-store', $record->extraction['author_handle'] ?? 'none' );
+		$this->assertSame( 'The Real Alex Doe', $record->author_name );
+	}
+
+	public function test_identity_store_applies_when_linkedin_jsonld_confirms_the_handle() {
+		Identity_Store::save(
+			'linkedin',
+			array(
+				'handle' => 'jordansample',
+				'name'   => 'The Real Jordan Sample',
+				'url'    => 'https://www.linkedin.com/in/jordansample',
+				'avatar' => 'https://example.org/real-jordan.jpg',
+			)
+		);
+
+		$service = new Preview_Service(
+			null,
+			Fixtures::fetcher( array( 'linkedin.com/posts/' => Fixtures::get( 'linkedin-post.html' ) ) )
+		);
+		$record  = $service->preview_url(
+			'https://www.linkedin.com/posts/jordansample_topic-activity-7000000000000000000-AbCd',
+			999999
+		);
+
+		$this->assertSame( 'identity-store', $record->extraction['author_handle'] ?? 'none' );
+		$this->assertSame( 'The Real Jordan Sample', $record->author_name );
+	}
+
+	public function test_identity_store_applies_when_generic_jsonld_confirms_the_author_url() {
+		Identity_Store::save(
+			'generic',
+			array(
+				'handle' => '',
+				'name'   => 'The Real Riley',
+				'url'    => 'https://riley.example/about',
+				'avatar' => 'https://example.org/real-riley.jpg',
+			)
+		);
+
+		// Generic sources never carry a handle at all, so the store must
+		// be keyed — and gated — on author_url instead.
+		$body = '<html><head><script type="application/ld+json">'
+			. '{"@context":"https://schema.org","@type":"Article","author":'
+			. '{"@type":"Person","name":"Riley Fixture","url":"https://riley.example/about"}}'
+			. '</script></head><body>A generic reply.</body></html>';
+
+		$service = new Preview_Service( null, Fixtures::fetcher( array( 'example.org/riley-reply' => $body ) ) );
+		$record  = $service->preview_url( 'https://example.org/riley-reply', 999999 );
+
+		$this->assertSame( '', $record->author_handle );
+		$this->assertSame( 'identity-store', $record->extraction['author_url'] ?? 'none' );
+		$this->assertSame( 'The Real Riley', $record->author_name );
+	}
+
 	public function test_url_list_parsing_tolerates_blank_lines_and_enforces_the_cap() {
 		$raw = "  https://x.com/a/status/1  \n\n\nhttps://x.com/a/status/2\r\n   \r\n";
 

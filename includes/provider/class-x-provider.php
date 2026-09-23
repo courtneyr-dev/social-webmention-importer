@@ -148,9 +148,17 @@ class X_Provider implements Provider {
 		$record->offer( 'author_name', $name, 'oembed' );
 		$record->offer( 'author_url', esc_url_raw( (string) ( $data['author_url'] ?? '' ) ), 'oembed' );
 
-		if ( ! $record->author_handle && ! empty( $data['author_url'] ) ) {
+		if ( ! empty( $data['author_url'] ) ) {
 			$handle_path = trim( (string) wp_parse_url( $data['author_url'], PHP_URL_PATH ), '/' );
-			if ( preg_match( '/^[A-Za-z0-9_]{1,15}$/', $handle_path ) ) {
+			// Offer the handle outright when the URL had none, or
+			// re-offer it at oEmbed confidence when it corroborates the
+			// one already there — a bare path-derived handle never
+			// outranks the identity store's own lookup gate
+			// (Preview_Service::preview_url()) until something
+			// independent confirms it actually belongs to this author.
+			if ( preg_match( '/^[A-Za-z0-9_]{1,15}$/', $handle_path )
+				&& ( '' === $record->author_handle || 0 === strcasecmp( $handle_path, $record->author_handle ) )
+			) {
 				$record->offer( 'author_handle', $handle_path, 'oembed' );
 			}
 		}
