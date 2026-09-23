@@ -1,4 +1,5 @@
 # Development and test files
+/.git
 /tests
 /docs
 /.github

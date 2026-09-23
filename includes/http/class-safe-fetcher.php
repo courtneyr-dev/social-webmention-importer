@@ -190,17 +190,23 @@ class Safe_Fetcher {
 		$guard = new self();
 		add_action( 'requests-requests.before_redirect', array( $guard, 'reject_unsafe_redirect' ), 10, 1 );
 
-		$response = wp_safe_remote_get(
-			$url,
-			array(
-				'timeout'             => min( 15, max( 3, (int) $args['timeout'] ) ),
-				'redirection'         => 3,
-				'limit_response_size' => self::MAX_BYTES,
-				'user-agent'          => $args['user_agent'],
-			)
-		);
-
-		remove_action( 'requests-requests.before_redirect', array( $guard, 'reject_unsafe_redirect' ), 10 );
+		// A `finally` block, not a plain call-then-remove: some other
+		// callback hooked to the request (e.g. `http_api_debug`) throwing
+		// would otherwise leave the guard registered for every later,
+		// unrelated fetch in the same request lifecycle.
+		try {
+			$response = wp_safe_remote_get(
+				$url,
+				array(
+					'timeout'             => min( 15, max( 3, (int) $args['timeout'] ) ),
+					'redirection'         => 3,
+					'limit_response_size' => self::MAX_BYTES,
+					'user-agent'          => $args['user_agent'],
+				)
+			);
+		} finally {
+			remove_action( 'requests-requests.before_redirect', array( $guard, 'reject_unsafe_redirect' ), 10 );
+		}
 
 		if ( is_wp_error( $response ) ) {
 			return $response;
@@ -236,15 +242,17 @@ class Safe_Fetcher {
 	 * Hooked to `requests-requests.before_redirect` for the lifetime of one
 	 * `get()` call (only the redirect target is needed, so `add_action()`
 	 * requests just that one argument of the four the hook provides).
-	 * Throwing here is caught by WP_Http::request() and surfaces to the
-	 * caller as a WP_Error, matching every other rejection in this class.
+	 * Throwing here is caught by WP_Http::request(), which wraps whatever
+	 * Requests exception it catches the same way regardless of type: the
+	 * caller gets a WP_Error, but under core's own `http_request_failed`
+	 * code, not one of this class's `swi_*` codes.
 	 *
 	 * @param string $location Redirect target URL.
 	 * @throws \WpOrg\Requests\Exception When the redirect target is blocked.
 	 */
 	public function reject_unsafe_redirect( $location ): void {
 		if ( is_wp_error( $this->validate_url( (string) $location ) ) ) {
-			throw new \WpOrg\Requests\Exception( 'Redirect target blocked', 'swi.redirect_blocked' );
+			throw new \WpOrg\Requests\Exception( esc_html__( 'Redirect target blocked.', 'social-webmention-importer' ), 'swi.redirect_blocked' );
 		}
 	}
 }

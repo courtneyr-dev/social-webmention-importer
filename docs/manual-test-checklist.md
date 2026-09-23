@@ -28,8 +28,12 @@ Run against staging with the Webmention plugin active before each release.
 - [ ] A LinkedIn authwall URL degrades to editable fields with a warning.
 - [ ] An unsafe URL (e.g. `http://127.0.0.1/x`) errors per-row, batch continues.
 - [ ] Editing a name and importing records it as reviewer-locked.
-- [ ] "Use this identity for future imports" pre-fills the next preview of the
-      same handle.
+- [ ] "Use this identity for future imports" applies on the next preview of
+      the same handle once the page confirms the author (X oEmbed, LinkedIn
+      JSON-LD, or a tested title pattern).
+- [ ] On a blocked or unreadable row (LinkedIn authwall/999, or an X row
+      where both oEmbed and the page fail), the saved identity is not
+      guessed onto it; the fields stay for the reviewer to fill in.
 - [ ] Duplicate URL within the batch is flagged; existing source shows "will
       update".
 
