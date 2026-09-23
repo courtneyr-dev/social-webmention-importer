@@ -7,6 +7,10 @@
 
 namespace CourtneyRDev\SocialWebmentionImporter\Parsing;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 /**
  * Cleans candidate author names and refuses network-level attributions.
  *

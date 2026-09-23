@@ -7,6 +7,10 @@
 
 namespace CourtneyRDev\SocialWebmentionImporter\Import;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 use CourtneyRDev\SocialWebmentionImporter\Plugin;
 use WP_Error;
 
@@ -301,6 +305,7 @@ class Comment_Importer {
 			'comment_author'       => sanitize_text_field( $record->author_name ),
 			'comment_author_email' => '',
 			'comment_author_url'   => esc_url_raw( $record->author_url ),
+			'comment_author_IP'    => '',
 			'comment_content'      => $content,
 			'comment_type'         => Plugin::MODE_SOCIAL_LINKBACK === $record->mode ? 'comment' : $record->response_type,
 			'comment_parent'       => 0,

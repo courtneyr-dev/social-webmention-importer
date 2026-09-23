@@ -7,6 +7,10 @@
 
 namespace CourtneyRDev\SocialWebmentionImporter\Parsing;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 use DOMDocument;
 use DOMXPath;
 

@@ -7,6 +7,10 @@
 
 namespace CourtneyRDev\SocialWebmentionImporter\Display;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 use CourtneyRDev\SocialWebmentionImporter\Plugin;
 
 /**

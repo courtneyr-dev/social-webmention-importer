@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.5.4 — 2026-09-22
+
+- Security hardening: the fetch-policy redirect guard now runs on every
+  redirect hop instead of a filter that never re-fired for internal
+  redirects. Host names are resolved and the resolved address is
+  range-checked (not just a literal IP already in the URL); a trailing
+  dot on the host is trimmed before those checks, so a fully-qualified
+  form of a blocked address can't slip through; `100.64.0.0/10` and the
+  other non-global ranges are now blocked too, via
+  `FILTER_FLAG_GLOBAL_RANGE`; and a host name that fails to resolve is
+  refused rather than treated as safe.
+- Target verification now checks the character after a match too, so a
+  source linking only to a longer path no longer verifies a shorter
+  target.
+- A saved reviewer-confirmed identity is applied once the page has
+  actually confirmed the author — the handle when X's oEmbed or
+  LinkedIn's JSON-LD confirms it, otherwise the author URL — never off
+  the bare, unconfirmed path-derived guess. On a blocked or unreadable
+  row (a LinkedIn authwall/999 response, or an X row where both oEmbed
+  and the page fail), no saved identity is guessed onto it; the reviewer
+  enters the name.
+- Every file under `includes/` now refuses to run outside WordPress.
+- Imported comments no longer inherit the reviewing admin's IP address.
+- Added `.distignore` so a packaged build excludes tests, docs, and dev
+  tooling config.
+
 ## 0.5.3 — 2026-08-18
 
 - Indent the Tools entry beneath Webmention's so the pair reads as

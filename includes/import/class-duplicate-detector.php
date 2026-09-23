@@ -7,6 +7,10 @@
 
 namespace CourtneyRDev\SocialWebmentionImporter\Import;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 /**
  * Builds the normalized source key and finds existing comments for it.
  *
