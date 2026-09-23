@@ -17,9 +17,27 @@ use WP_Error;
  * Wraps `wp_safe_remote_get()` with the plugin's fetch policy.
  *
  * Policy: HTTP(S) only, no credentials in the URL, no loopback / private /
- * link-local hosts (core's `wp_http_validate_url()` enforces the IP checks and
- * re-validates every redirect hop inside `wp_safe_remote_get()`), short
- * timeout, small redirect budget, and a 1 MB response cap.
+ * link-local / reserved / carrier-grade-NAT hosts, short timeout, small
+ * redirect budget, and a 1 MB response cap.
+ *
+ * `validate_url()` normalizes the host the way core's own
+ * `wp_http_validate_url()` does (trims a trailing dot, so
+ * `169.254.169.254.` is still recognized as the IP literal it is) and, for
+ * a name rather than an IP literal, resolves it via `gethostbyname()`
+ * before checking the resolved address against the blocked ranges; a name
+ * that fails to resolve is refused rather than treated as safe. The same
+ * check runs again on every redirect hop via `reject_unsafe_redirect()`,
+ * hooked to `requests-requests.before_redirect` (see `get()`), since
+ * `pre_http_request` never fires for a redirect Requests follows
+ * internally.
+ *
+ * Known residual gaps, both out of scope for v1: the resolved address is
+ * not re-checked at the moment the socket actually connects, so a
+ * DNS-rebinding attacker who repoints a name between this check and the
+ * connect is not caught; and `gethostbyname()` only resolves IPv4 (A)
+ * records, so a name whose AAAA record points at a private/loopback IPv6
+ * address while its A record is public would pass this check even on a
+ * host that prefers IPv6 connections.
  */
 class Safe_Fetcher {
 
@@ -67,11 +85,28 @@ class Safe_Fetcher {
 
 		// Core does NOT block link-local/reserved ranges — notably
 		// 169.254.169.254, the cloud-metadata endpoint — so check IP
-		// literals against the full private+reserved set ourselves. A
-		// hostname (rather than an IP literal already) is resolved first,
-		// so a name that merely points at a blocked range is caught too.
-		$host = trim( (string) $parsed['host'], '[]' );
-		$ip   = filter_var( $host, FILTER_VALIDATE_IP ) ? $host : gethostbyname( $host );
+		// literals against the full private+reserved set ourselves.
+		// Normalize the host the way core's own wp_http_validate_url()
+		// does — trimming a trailing dot — before deciding whether it is
+		// an IP literal already or a name to resolve: `169.254.169.254.`
+		// is a fully-qualified form of that same address, but fails
+		// filter_var()'s literal match while the dot is still there,
+		// which would otherwise send it down the hostname-resolution path
+		// and past this check entirely (gethostbyname() cannot resolve a
+		// malformed name like that, and an unresolvable name used to fall
+		// through as "not an IP literal, so not blocked").
+		$host = rtrim( trim( (string) $parsed['host'], '[]' ), '.' );
+
+		if ( filter_var( $host, FILTER_VALIDATE_IP ) ) {
+			$ip = $host;
+		} else {
+			$ip = gethostbyname( $host );
+			if ( $ip === $host ) {
+				// gethostbyname() could not resolve it. Refuse rather than
+				// treat an unresolvable name as automatically safe.
+				return new WP_Error( 'swi_unsafe_url', __( 'The URL points at a host this site refuses to fetch.', 'social-webmention-importer' ) );
+			}
+		}
 
 		if ( self::is_blocked_ip_literal( $ip ) ) {
 			return new WP_Error( 'swi_unsafe_url', __( 'The URL points at a host this site refuses to fetch.', 'social-webmention-importer' ) );
@@ -84,11 +119,13 @@ class Safe_Fetcher {
 	 * Whether a host is an IP literal inside a private, loopback,
 	 * link-local, or otherwise reserved range.
 	 *
-	 * @param string $host Host portion of a URL (IPv6 may be bracketed).
+	 * @param string $host Host portion of a URL (IPv6 may be bracketed, and
+	 *                     IPv4 may carry a trailing dot from a
+	 *                     fully-qualified name).
 	 * @return bool True when the host is a blocked IP literal.
 	 */
 	public static function is_blocked_ip_literal( $host ) {
-		$ip = trim( (string) $host, '[]' );
+		$ip = rtrim( trim( (string) $host, '[]' ), '.' );
 
 		if ( ! filter_var( $ip, FILTER_VALIDATE_IP ) ) {
 			return false;
@@ -96,11 +133,14 @@ class Safe_Fetcher {
 		}
 
 		// NO_PRIV_RANGE covers 10/8, 172.16/12, 192.168/16, fc00::/7 …;
-		// NO_RES_RANGE covers 0/8, 127/8, 169.254/16, 240/4, ::1, fe80::/10 ….
+		// NO_RES_RANGE covers 0/8, 127/8, 169.254/16, 240/4, ::1, fe80::/10 …;
+		// GLOBAL_RANGE additionally excludes 100.64.0.0/10, the
+		// carrier-grade-NAT range RFC 6598 reserves and that neither of
+		// the other two flags covers.
 		return false === filter_var(
 			$ip,
 			FILTER_VALIDATE_IP,
-			FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
+			FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE | FILTER_FLAG_GLOBAL_RANGE
 		);
 	}
 

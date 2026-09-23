@@ -63,17 +63,25 @@ class VerifierAndFetcherTest extends WP_UnitTestCase {
 
 	public function unsafe_url_provider() {
 		return array(
-			'empty'             => array( '' ),
-			'malformed'         => array( 'http:///nohost' ),
-			'ftp scheme'        => array( 'ftp://example.org/file' ),
-			'javascript scheme' => array( 'javascript:alert(1)' ),
-			'file scheme'       => array( 'file:///etc/passwd' ),
-			'credentials'       => array( 'https://user:pass@example.org/' ),
-			'loopback ip'       => array( 'http://127.0.0.1/admin' ),
-			'localhost'         => array( 'http://localhost/admin' ),
-			'private 10.x'      => array( 'http://10.0.0.5/internal' ),
-			'private 192.168'   => array( 'http://192.168.1.1/router' ),
-			'link-local'        => array( 'http://169.254.169.254/latest/meta-data/' ),
+			'empty'                   => array( '' ),
+			'malformed'               => array( 'http:///nohost' ),
+			'ftp scheme'              => array( 'ftp://example.org/file' ),
+			'javascript scheme'       => array( 'javascript:alert(1)' ),
+			'file scheme'             => array( 'file:///etc/passwd' ),
+			'credentials'             => array( 'https://user:pass@example.org/' ),
+			'loopback ip'             => array( 'http://127.0.0.1/admin' ),
+			'localhost'               => array( 'http://localhost/admin' ),
+			'private 10.x'            => array( 'http://10.0.0.5/internal' ),
+			'private 192.168'         => array( 'http://192.168.1.1/router' ),
+			'link-local'              => array( 'http://169.254.169.254/latest/meta-data/' ),
+			// A trailing dot makes this a fully-qualified form of the same
+			// address; filter_var() alone doesn't see it as an IP literal,
+			// so it must still be caught after host normalization.
+			'trailing-dot link-local' => array( 'http://169.254.169.254./' ),
+			'carrier-grade NAT'       => array( 'http://100.64.0.1/' ),
+			// Not an IP literal and does not resolve: refused, not allowed
+			// through as "not a literal, so not blocked".
+			'unresolvable hostname'   => array( 'http://this-name-does-not-resolve.invalid/' ),
 		);
 	}
 
@@ -81,7 +89,10 @@ class VerifierAndFetcherTest extends WP_UnitTestCase {
 		$this->assertTrue( Safe_Fetcher::validate_url( 'https://x.com/alexdoe/status/123' ) );
 	}
 
-	public function test_redirect_guard_rejects_a_blocked_hop() {
+	/**
+	 * @dataProvider blocked_redirect_target_provider
+	 */
+	public function test_redirect_guard_rejects_a_blocked_hop( $location ) {
 		$fetcher = new Safe_Fetcher();
 
 		$this->expectException( \WpOrg\Requests\Exception::class );
@@ -89,15 +100,63 @@ class VerifierAndFetcherTest extends WP_UnitTestCase {
 
 		// Simulates the `requests-requests.before_redirect` call Requests
 		// makes for a real redirect hop, without any network I/O.
-		$fetcher->reject_unsafe_redirect( 'http://169.254.169.254/', array(), null, array() );
+		$fetcher->reject_unsafe_redirect( $location );
+	}
+
+	public function blocked_redirect_target_provider() {
+		return array(
+			'link-local'              => array( 'http://169.254.169.254/' ),
+			'trailing-dot link-local' => array( 'http://169.254.169.254./' ),
+		);
 	}
 
 	public function test_redirect_guard_allows_a_safe_hop() {
 		$fetcher = new Safe_Fetcher();
 
-		// No exception means the hop is allowed through.
-		$fetcher->reject_unsafe_redirect( 'https://example.org/redirected', array(), null, array() );
+		// A public IP literal, not a hostname, so this never depends on
+		// real DNS resolution.
+		$fetcher->reject_unsafe_redirect( 'https://93.184.216.34/redirected' );
 		$this->addToAssertionCount( 1 );
+	}
+
+	public function test_get_registers_the_redirect_guard_only_while_a_fetch_is_in_flight() {
+		$observed_during_fetch = null;
+
+		$probe = function () use ( &$observed_during_fetch ) {
+			$observed_during_fetch = has_action( 'requests-requests.before_redirect' );
+			return new \WP_Error( 'test_short_circuit', 'stop before any real HTTP happens' );
+		};
+		add_filter( 'pre_http_request', $probe, 5, 3 );
+
+		// A public IP literal so this never depends on real DNS/network.
+		Safe_Fetcher::get( 'https://93.184.216.34/whatever' );
+
+		remove_filter( 'pre_http_request', $probe, 5 );
+
+		$this->assertTrue( $observed_during_fetch, 'The redirect guard must be registered while get() has a fetch in flight.' );
+		$this->assertFalse( has_action( 'requests-requests.before_redirect' ), 'The redirect guard must be removed once get() returns.' );
+	}
+
+	public function test_redirect_guard_fires_through_the_real_requests_hooks_bridge() {
+		$fetcher  = new Safe_Fetcher();
+		$callback = array( $fetcher, 'reject_unsafe_redirect' );
+
+		// Registered exactly like get() does, then dispatched the way
+		// WP_HTTP_Requests_Hooks actually fires it for a real redirect hop
+		// (never by calling reject_unsafe_redirect() directly) — so a
+		// hook-name mismatch between get()'s add_action() and what the
+		// Requests library/WordPress bridge actually dispatches would fail
+		// this test even though it leaves the direct-call tests green.
+		add_action( 'requests-requests.before_redirect', $callback, 10, 1 );
+
+		$hooks = new \WP_HTTP_Requests_Hooks( 'https://93.184.216.34/', array() );
+
+		try {
+			$this->expectException( \WpOrg\Requests\Exception::class );
+			$hooks->dispatch( 'requests.before_redirect', array( 'http://169.254.169.254/', array(), null, array() ) );
+		} finally {
+			remove_action( 'requests-requests.before_redirect', $callback, 10 );
+		}
 	}
 
 	public function test_identity_store_is_not_applied_off_an_unverified_path_handle() {

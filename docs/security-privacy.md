@@ -20,21 +20,31 @@
   redirects happen inside one `Requests::request()` call and never re-enter
   `WP_Http::request()`).
 - **Additional hardening:** core does *not* reject link-local/reserved ranges
-  (notably `169.254.169.254`, the cloud-metadata endpoint). `Safe_Fetcher`
-  resolves hostnames and rejects IP literals — the original or the resolved
-  one — in private, loopback, link-local, and reserved ranges itself, both
-  up front (`validate_url()`) and per redirect hop via a
+  (notably `169.254.169.254`, the cloud-metadata endpoint) or the
+  carrier-grade-NAT range (`100.64.0.0/10`, RFC 6598). `Safe_Fetcher`
+  normalizes the host (trimming a trailing dot, so `169.254.169.254.` is
+  still recognized as that same address instead of falling through as an
+  unresolvable name), resolves hostnames, and rejects IP literals — the
+  original or the resolved one — in private, loopback, link-local,
+  reserved, and carrier-grade-NAT ranges itself, both up front
+  (`validate_url()`) and per redirect hop via a
   `requests-requests.before_redirect` action (the WordPress action
-  `WP_HTTP_Requests_Hooks` bridges from that same Requests-level hook).
+  `WP_HTTP_Requests_Hooks` bridges from that same Requests-level hook). A
+  hostname that fails to resolve is refused, not treated as safe.
   `pre_http_request` was tried first but never actually fires for an
   internal redirect, so a guard registered there never runs; discovered
-  while writing the SSRF test suite, along with the missing range check
-  itself — consider reporting the latter upstream.
+  while writing the SSRF test suite, along with the missing range checks
+  themselves — consider reporting the latter upstream.
 - The browser never chooses fetch endpoints: it posts URLs, the server
   validates and fetches them.
-- DNS-rebinding (a hostname resolving to an internal IP) is out of scope for
-  v1, matching core's own posture; the admin-only, nonce-protected surface
-  limits exposure to trusted reviewers.
+- Two gaps remain out of scope for v1, matching core's own posture; the
+  admin-only, nonce-protected surface limits exposure to trusted reviewers
+  in both cases: the resolved address is not re-checked at the moment the
+  socket actually connects, so a DNS-rebinding attacker who repoints a name
+  between the check and the connect is not caught; and `gethostbyname()`
+  only resolves IPv4 (A) records, so a name whose AAAA record points at a
+  private/loopback IPv6 address while its A record is public would pass
+  this check even on a host that prefers IPv6 connections.
 
 ## Content sanitization
 
