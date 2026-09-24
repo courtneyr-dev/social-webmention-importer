@@ -109,4 +109,82 @@ class ParsingTest extends WP_UnitTestCase {
 	public function test_linkedin_og_image_is_always_refused_as_avatar() {
 		$this->assertSame( '', Avatar_Resolver::from_linkedin_og_image() );
 	}
+
+	public function test_short_links_are_resolved_to_host_and_path_with_nofollow_ugc() {
+		$html = 'Check this out <a href="https://t.co/FIXTURE00">https://t.co/FIXTURE00</a> neat.';
+
+		$resolved = Content_Resolver::resolve_short_links(
+			$html,
+			function ( $url ) {
+				$this->assertSame( 'https://t.co/FIXTURE00', $url );
+				// The href keeps the real, working final URL (query string
+				// and all); only the visible text is shortened to host/path.
+				return 'https://example-blog.test/2026/08/17/sample-article/?utm_source=x';
+			}
+		);
+
+		$this->assertSame(
+			'Check this out <a href="https://example-blog.test/2026/08/17/sample-article/?utm_source=x" rel="nofollow ugc">example-blog.test/2026/08/17/sample-article/</a> neat.',
+			$resolved
+		);
+	}
+
+	public function test_pic_twitter_com_links_also_resolve() {
+		$html = '<a href="https://pic.twitter.com/FIXTURE00">pic.twitter.com/FIXTURE00</a>';
+
+		$resolved = Content_Resolver::resolve_short_links(
+			$html,
+			function () {
+				return 'https://x.com/alexdoe/status/123/photo/1';
+			}
+		);
+
+		$this->assertSame(
+			'<a href="https://x.com/alexdoe/status/123/photo/1" rel="nofollow ugc">x.com/alexdoe/status/123/photo/1</a>',
+			$resolved
+		);
+	}
+
+	public function test_resolution_failure_leaves_the_original_link_untouched() {
+		$html = '<a href="https://t.co/FIXTURE00">https://t.co/FIXTURE00</a>';
+
+		$resolved = Content_Resolver::resolve_short_links(
+			$html,
+			function () {
+				return new \WP_Error( 'swi_http_404', 'not found' );
+			}
+		);
+
+		$this->assertSame( $html, $resolved );
+	}
+
+	public function test_resolving_short_links_is_idempotent() {
+		$html     = '<a href="https://t.co/FIXTURE00">https://t.co/FIXTURE00</a>';
+		$resolver = function () {
+			return 'https://example-blog.test/post/';
+		};
+
+		$once  = Content_Resolver::resolve_short_links( $html, $resolver );
+		$twice = Content_Resolver::resolve_short_links(
+			$once,
+			function () {
+				$this->fail( 'An already-resolved link must not be resolved again.' );
+			}
+		);
+
+		$this->assertSame( $once, $twice );
+	}
+
+	public function test_links_that_are_not_shorteners_are_left_alone() {
+		$html = '<a href="https://example.org/already-a-real-link">example.org/already-a-real-link</a>';
+
+		$resolved = Content_Resolver::resolve_short_links(
+			$html,
+			function () {
+				$this->fail( 'Non-shortener links must never be fetched.' );
+			}
+		);
+
+		$this->assertSame( $html, $resolved );
+	}
 }

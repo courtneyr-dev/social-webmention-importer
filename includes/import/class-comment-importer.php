@@ -271,7 +271,11 @@ class Comment_Importer {
 			? $record->published_gmt
 			: current_time( 'mysql', true );
 
-		$content = wp_kses( $record->content, self::allowed_content_tags() );
+		$content = \CourtneyRDev\SocialWebmentionImporter\Parsing\Content_Resolver::resolve_short_links(
+			$record->content,
+			array( __CLASS__, 'resolve_short_link_url' )
+		);
+		$content = wp_kses( $content, self::allowed_content_tags() );
 
 		$meta = array(
 			'protocol'                   => Plugin::MODE_WEBMENTION === $record->mode ? 'webmention' : 'social-linkback',
@@ -393,6 +397,25 @@ class Comment_Importer {
 			'comment_id' => $comment_id,
 			'message'    => __( 'Existing response updated.', 'social-webmention-importer' ),
 		);
+	}
+
+	/**
+	 * Resolve one URL to its final destination under the fetch policy, for
+	 * Content_Resolver::resolve_short_links(). A thin adapter so the
+	 * resolver itself stays fetcher-agnostic and unit-testable without
+	 * HTTP; this is the only piece that knows about Safe_Fetcher.
+	 *
+	 * @param string $url URL to resolve (a t.co/pic.twitter.com short link).
+	 * @return string|WP_Error Final URL, or the fetch error.
+	 */
+	public static function resolve_short_link_url( $url ) {
+		$response = \CourtneyRDev\SocialWebmentionImporter\Http\Safe_Fetcher::get( $url, array( 'timeout' => 5 ) );
+
+		if ( is_wp_error( $response ) ) {
+			return $response;
+		}
+
+		return $response['final_url'] ?? $url;
 	}
 
 	/**

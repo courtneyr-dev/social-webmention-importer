@@ -125,10 +125,14 @@ class ImporterTest extends WP_UnitTestCase {
 		$this->assertNotEmpty( get_comment_meta( $comment->comment_ID, 'webmention_last_modified', true ) );
 		$this->assertSame( '1', get_comment_meta( $comment->comment_ID, '_swi_target_verified', true ) );
 
-		// No source label on verified Webmentions — their display belongs
-		// to the Webmention plugin.
+		// No visible source label on verified Webmentions — their display
+		// belongs to the Webmention plugin — but the network badge next to
+		// the avatar is CSS-only, so a hidden text equivalent is still
+		// required for screen readers.
 		$text = Attribution::append_source_label( $comment->comment_content, $comment );
 		$this->assertStringNotContainsString( 'Originally posted on', $text );
+		$this->assertStringContainsString( 'screen-reader-text', $text );
+		$this->assertStringContainsString( 'via X', $text );
 	}
 
 	public function test_unverified_record_cannot_import_as_webmention() {
@@ -222,6 +226,82 @@ class ImporterTest extends WP_UnitTestCase {
 		$this->assertStringNotContainsString( 'onclick', $comment->comment_content );
 		$this->assertStringNotContainsString( '<img', $comment->comment_content );
 		$this->assertStringContainsString( '<a href="https://example.org"', $comment->comment_content );
+	}
+
+	public function test_short_links_are_resolved_at_import_time_and_are_idempotent_on_refresh() {
+		$calls = 0;
+		$probe = function ( $preempt, $args, $url ) use ( &$calls ) {
+			if ( false === strpos( $url, 't.co/FIXTURE00' ) ) {
+				return $preempt;
+			}
+			++$calls;
+			return array(
+				'headers'       => array(),
+				'body'          => 'ok',
+				'response'      => array(
+					'code'    => 200,
+					'message' => 'OK',
+				),
+				'cookies'       => array(),
+				'filename'      => null,
+				'http_response' => new class() {
+					/**
+					 * Stand-in for WP_HTTP_Requests_Response, whose
+					 * get_response_object()->url is all Safe_Fetcher::get()
+					 * reads to learn the redirect's final destination.
+					 */
+					public function get_response_object() {
+						return (object) array( 'url' => 'https://example-blog.test/2026/08/17/sample-article/' );
+					}
+				},
+			);
+		};
+
+		$record          = $this->curated_record();
+		$record->content = 'Great read <a href="https://t.co/FIXTURE00">https://t.co/FIXTURE00</a>';
+
+		add_filter( 'pre_http_request', $probe, 10, 3 );
+		$result = Comment_Importer::import( $record );
+		remove_filter( 'pre_http_request', $probe, 10 );
+
+		$comment = get_comment( $result['comment_id'] );
+		$this->assertStringContainsString(
+			'<a href="https://example-blog.test/2026/08/17/sample-article/" rel="nofollow ugc">example-blog.test/2026/08/17/sample-article/</a>',
+			$comment->comment_content
+		);
+		$this->assertStringNotContainsString( 't.co', $comment->comment_content );
+		$this->assertSame( 1, $calls, 'One fetch to resolve the short link.' );
+
+		// A refresh whose parser output already carries the resolved link
+		// (e.g. a second import pass in the same request) must not re-fetch it.
+		$again                      = $this->curated_record();
+		$again->existing_comment_id = $result['comment_id'];
+		$again->content             = $comment->comment_content;
+
+		add_filter( 'pre_http_request', $probe, 10, 3 );
+		Comment_Importer::import( $again );
+		remove_filter( 'pre_http_request', $probe, 10 );
+
+		$this->assertSame( 1, $calls, 'An already-resolved link is not re-fetched on refresh.' );
+	}
+
+	public function test_short_link_resolution_failure_leaves_the_link_untouched() {
+		$probe = function ( $preempt, $args, $url ) {
+			if ( false === strpos( $url, 't.co/DEAD0000' ) ) {
+				return $preempt;
+			}
+			return new \WP_Error( 'http_request_failed', 'Could not resolve host' );
+		};
+
+		$record          = $this->curated_record();
+		$record->content = 'Broken link <a href="https://t.co/DEAD0000">https://t.co/DEAD0000</a>';
+
+		add_filter( 'pre_http_request', $probe, 10, 3 );
+		$result = Comment_Importer::import( $record );
+		remove_filter( 'pre_http_request', $probe, 10 );
+
+		$comment = get_comment( $result['comment_id'] );
+		$this->assertStringContainsString( 'href="https://t.co/DEAD0000"', $comment->comment_content );
 	}
 
 	public function test_one_failed_row_does_not_roll_back_successes() {
