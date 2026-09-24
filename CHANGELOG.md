@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.5 — 2026-09-24
+
+- Accessibility: verified Webmentions now carry a hidden
+  `screen-reader-text` naming the source network ("via X" / "via
+  LinkedIn"), since the network badge next to the avatar is a CSS
+  background image with no other text equivalent in that mode.
+- Accessibility: the curated-response source label now renders at
+  `0.875rem` and full opacity instead of `0.85em`/`opacity: .85` (11px
+  against a 13px comment body), and its hidden suffix is shortened to
+  " (external)" instead of restating the visible link text.
+- X responses keep their `t.co`/`pic.twitter.com` shortened links instead
+  of the article or media they point to. These are now resolved through
+  the fetch policy's `Safe_Fetcher` at import time and rewritten to their
+  final `host/path` (no scheme) with `rel="nofollow ugc"`; a link that
+  fails to resolve is left as-is, and an already-resolved link is never
+  re-fetched on refresh.
+
 ## 0.5.4 — 2026-09-22
 
 - Security hardening: the fetch-policy redirect guard now runs on every
