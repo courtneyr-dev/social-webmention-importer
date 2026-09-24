@@ -81,7 +81,19 @@ class Attribution {
 	}
 
 	/**
-	 * Append the source label to curated social responses.
+	 * Append the source label to curated social responses, or — for
+	 * verified Webmentions, whose display belongs to the Webmention
+	 * plugin and stays visually untouched — a hidden text equivalent of
+	 * the network badge.
+	 *
+	 * The network badge itself (the small logo painted next to the
+	 * avatar) is a CSS background image driven by a class or href, in
+	 * both modes: pure decoration with no accessible name. Verified
+	 * Webmentions have no other text naming the network at all, so
+	 * without this a screen reader announces nothing about where the
+	 * response came from. Curated responses already speak the network
+	 * name in the visible "Originally posted on …" sentence, so only the
+	 * hidden badge equivalent is added there, not a duplicate label.
 	 *
 	 * @param string           $comment_text Comment text (already filtered by core).
 	 * @param \WP_Comment|null $comment      Comment object.
@@ -92,21 +104,40 @@ class Attribution {
 			return $comment_text;
 		}
 
-		if ( Plugin::MODE_SOCIAL_LINKBACK !== get_comment_meta( $comment->comment_ID, '_swi_import_mode', true ) ) {
-			return $comment_text;
-		}
-
-		$source   = get_comment_meta( $comment->comment_ID, 'url', true );
+		$mode     = get_comment_meta( $comment->comment_ID, '_swi_import_mode', true );
 		$provider = get_comment_meta( $comment->comment_ID, '_swi_provider', true );
 
-		if ( ! $source || ! wp_http_validate_url( $source ) ) {
+		if ( ! $provider ) {
 			return $comment_text;
 		}
 
 		$network = self::PROVIDER_LABELS[ $provider ] ?? ucfirst( (string) $provider );
 
+		if ( Plugin::MODE_WEBMENTION === $mode ) {
+			return $comment_text . sprintf(
+				'<span class="screen-reader-text">%s</span>',
+				esc_html(
+					sprintf(
+						/* translators: %s: network name (X, LinkedIn). */
+						__( 'via %s', 'social-webmention-importer' ),
+						$network
+					)
+				)
+			);
+		}
+
+		if ( Plugin::MODE_SOCIAL_LINKBACK !== $mode ) {
+			return $comment_text;
+		}
+
+		$source = get_comment_meta( $comment->comment_ID, 'url', true );
+
+		if ( ! $source || ! wp_http_validate_url( $source ) ) {
+			return $comment_text;
+		}
+
 		$label = sprintf(
-			'<p class="swi-source-label"><a href="%1$s" rel="nofollow ugc noopener">%2$s<span class="screen-reader-text"> %3$s</span></a></p>',
+			'<p class="swi-source-label"><a href="%1$s" rel="nofollow ugc noopener">%2$s<span class="screen-reader-text">%3$s</span></a></p>',
 			esc_url( $source ),
 			esc_html(
 				sprintf(
@@ -115,7 +146,7 @@ class Attribution {
 					$network
 				)
 			),
-			esc_html__( '(externally sourced response, opens the original post)', 'social-webmention-importer' )
+			esc_html__( ' (external)', 'social-webmention-importer' )
 		);
 
 		return $comment_text . $label;

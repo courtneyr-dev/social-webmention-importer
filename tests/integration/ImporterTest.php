@@ -125,10 +125,14 @@ class ImporterTest extends WP_UnitTestCase {
 		$this->assertNotEmpty( get_comment_meta( $comment->comment_ID, 'webmention_last_modified', true ) );
 		$this->assertSame( '1', get_comment_meta( $comment->comment_ID, '_swi_target_verified', true ) );
 
-		// No source label on verified Webmentions — their display belongs
-		// to the Webmention plugin.
+		// No visible source label on verified Webmentions — their display
+		// belongs to the Webmention plugin — but the network badge next to
+		// the avatar is CSS-only, so a hidden text equivalent is still
+		// required for screen readers.
 		$text = Attribution::append_source_label( $comment->comment_content, $comment );
 		$this->assertStringNotContainsString( 'Originally posted on', $text );
+		$this->assertStringContainsString( 'screen-reader-text', $text );
+		$this->assertStringContainsString( 'via X', $text );
 	}
 
 	public function test_unverified_record_cannot_import_as_webmention() {
