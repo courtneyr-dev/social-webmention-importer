@@ -106,8 +106,11 @@ class LinkedIn_Provider implements Provider {
 	/**
 	 * Parse a comment URN out of a LinkedIn URL's query string.
 	 *
-	 * Comment permalinks look like
-	 * `…/feed/update/urn:li:activity:{post}/?commentUrn=urn:li:comment:(activity:{post},{comment})`.
+	 * Two permalink shapes exist:
+	 *  - `…/feed/update/urn:li:activity:{post}/?commentUrn=urn:li:comment:(activity:{post},{comment})`
+	 *  - `…/feed/update/urn:li:ugcPost:{post}/?dashCommentUrn=urn:li:fsd_comment:({comment},urn:li:ugcPost:{post})`,
+	 *    what "Copy link to comment" (via lnkd.in/p/…) produces since late
+	 *    2026. The IDs come in the opposite order.
 	 *
 	 * @param string $url Absolute URL.
 	 * @return array{activity:string,comment:string}|null Null when the URL has no comment URN.
@@ -118,7 +121,11 @@ class LinkedIn_Provider implements Provider {
 			return null;
 		}
 
-		if ( preg_match( '/urn:li:comment:\(activity:(?<activity>\d+),(?<comment>\d+)\)/', rawurldecode( $query ), $m ) ) {
+		$query = rawurldecode( $query );
+
+		if ( preg_match( '/urn:li:comment:\(activity:(?<activity>\d+),(?<comment>\d+)\)/', $query, $m )
+			|| preg_match( '/urn:li:fsd_comment:\((?<comment>\d+),urn:li:(?:activity|ugcPost|share):(?<activity>\d+)\)/', $query, $m )
+		) {
 			return array(
 				'activity' => $m['activity'],
 				'comment'  => $m['comment'],

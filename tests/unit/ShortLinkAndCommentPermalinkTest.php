@@ -9,6 +9,7 @@ namespace CourtneyRDev\SocialWebmentionImporter\Tests\Unit;
 
 use CourtneyRDev\SocialWebmentionImporter\Import\Duplicate_Detector;
 use CourtneyRDev\SocialWebmentionImporter\Import\Preview_Record;
+use CourtneyRDev\SocialWebmentionImporter\Import\Preview_Service;
 use CourtneyRDev\SocialWebmentionImporter\Provider\LinkedIn_Provider;
 use CourtneyRDev\SocialWebmentionImporter\Tests\Fixtures;
 use CourtneyRDev\SocialWebmentionImporter\Verification\Target_Verifier;
@@ -17,6 +18,7 @@ use WP_UnitTestCase;
 /**
  * @covers \CourtneyRDev\SocialWebmentionImporter\Verification\Target_Verifier
  * @covers \CourtneyRDev\SocialWebmentionImporter\Provider\LinkedIn_Provider
+ * @covers \CourtneyRDev\SocialWebmentionImporter\Import\Preview_Service
  */
 class ShortLinkAndCommentPermalinkTest extends WP_UnitTestCase {
 
@@ -185,6 +187,114 @@ class ShortLinkAndCommentPermalinkTest extends WP_UnitTestCase {
 		// Still never the post author's identity or avatar.
 		$this->assertNotSame( 'Jordan Sample', $record->author_name );
 		$this->assertSame( '', $record->avatar );
+	}
+
+	/**
+	 * Comment ID whose embedded timestamp equals the fixture's first
+	 * comment (Riley Fixture, 2026-08-17T15:39:50.312Z).
+	 *
+	 * @return string
+	 */
+	private static function riley_comment_id() {
+		$ms = (int) ( new \DateTimeImmutable( '2026-08-17T15:39:50.312Z' ) )->format( 'Uv' );
+		return (string) ( ( $ms << 22 ) + 12345 );
+	}
+
+	/**
+	 * A comment permalink in the `dashCommentUrn` shape LinkedIn's
+	 * "Copy link to comment" produces since late 2026.
+	 *
+	 * @param string $post    Post (ugcPost) ID.
+	 * @param string $comment Comment ID.
+	 * @return string
+	 */
+	private static function dash_comment_url( $post, $comment ) {
+		return "https://www.linkedin.com/feed/update/urn:li:ugcPost:{$post}/?dashCommentUrn="
+			. rawurlencode( "urn:li:fsd_comment:({$comment},urn:li:ugcPost:{$post})" );
+	}
+
+	public function test_dash_comment_urn_parses_and_dedupes_like_the_legacy_shape() {
+		// Real link from lnkd.in/p/egwWmBZi (2026-11-11).
+		$dash_url   = self::dash_comment_url( '7526321980338253824', '7526326207123111936' );
+		$legacy_url = 'https://www.linkedin.com/feed/update/urn:li:activity:7526321980338253824/?commentUrn='
+			. rawurlencode( 'urn:li:comment:(activity:7526321980338253824,7526326207123111936)' );
+
+		$urn = LinkedIn_Provider::comment_urn_from_url( $dash_url );
+		$this->assertSame( '7526321980338253824', $urn['activity'] );
+		$this->assertSame( '7526326207123111936', $urn['comment'] );
+
+		$provider = new LinkedIn_Provider();
+		$this->assertSame(
+			$provider->normalize( $legacy_url )['remote_id'],
+			$provider->normalize( $dash_url )['remote_id'],
+			'Both permalink shapes for one comment must dedupe to the same remote item.'
+		);
+	}
+
+	public function test_dash_comment_permalink_auto_matches_by_snowflake_timestamp() {
+		$provider              = new LinkedIn_Provider();
+		$record                = new Preview_Record();
+		$record->source_url    = self::dash_comment_url( '7000000000000000001', self::riley_comment_id() );
+		$record->provider      = 'linkedin';
+		$normalized            = $provider->normalize( $record->source_url );
+		$record->canonical_url = $normalized['canonical'];
+		$record->remote_id     = $normalized['remote_id'];
+
+		$provider->extract(
+			$record,
+			Fixtures::fetcher( array( 'linkedin.com/feed/update' => Fixtures::get( 'linkedin-activity.html' ) ) )
+		);
+
+		$this->assertSame( 'Riley Fixture', $record->author_name );
+		$this->assertSame( 'Wonderful article, congratulations!', $record->content );
+		$this->assertNotSame( 'Jordan Sample', $record->author_name );
+	}
+
+	public function test_pasted_lnkd_short_link_follows_redirect_to_the_linkedin_comment() {
+		$expanded = self::dash_comment_url( '7000000000000000001', self::riley_comment_id() );
+		$page     = Fixtures::get( 'linkedin-activity.html' );
+		$fetcher  = function ( $url ) use ( $expanded, $page ) {
+			// Safe_Fetcher follows the 301, so final_url is the destination.
+			return array(
+				'code'         => 200,
+				'body'         => $page,
+				'content_type' => 'text/html',
+				'final_url'    => false !== strpos( $url, 'lnkd.in' ) ? $expanded : $url,
+			);
+		};
+
+		$record = ( new Preview_Service( null, $fetcher ) )->preview_url( 'https://lnkd.in/p/egwWmBZi', 999999 );
+
+		$this->assertSame( 'linkedin', $record->provider );
+		$this->assertSame( $expanded, $record->source_url );
+		$this->assertSame( 'Riley Fixture', $record->author_name );
+		$this->assertStringContainsString( 'https://lnkd.in/p/egwWmBZi', implode( ' ', $record->warnings ) );
+	}
+
+	public function test_pasted_lnkd_interstitial_routes_to_its_destination() {
+		$expanded     = self::dash_comment_url( '7000000000000000001', self::riley_comment_id() );
+		$interstitial = '<p>You\'re about to leave LinkedIn</p><a href="' . esc_attr( $expanded ) . '" data-tracking-will-navigate>link</a>';
+		$fetcher      = function ( $url ) use ( $interstitial ) {
+			return array(
+				'code'         => 200,
+				'body'         => false !== strpos( $url, 'lnkd.in' ) ? $interstitial : Fixtures::get( 'linkedin-activity.html' ),
+				'content_type' => 'text/html',
+				'final_url'    => $url,
+			);
+		};
+
+		$record = ( new Preview_Service( null, $fetcher ) )->preview_url( 'https://lnkd.in/eAbc123', 999999 );
+
+		$this->assertSame( 'linkedin', $record->provider );
+		$this->assertSame( $expanded, $record->source_url );
+		$this->assertSame( 'Riley Fixture', $record->author_name );
+	}
+
+	public function test_unexpandable_short_link_is_kept_with_a_warning() {
+		$record = ( new Preview_Service( null, Fixtures::fetcher( array() ) ) )->preview_url( 'https://lnkd.in/p/egwWmBZi', 999999 );
+
+		$this->assertSame( 'https://lnkd.in/p/egwWmBZi', $record->source_url );
+		$this->assertStringContainsString( 'could not be expanded', implode( ' ', $record->warnings ) );
 	}
 
 	public function test_public_comments_are_listed_from_jsonld() {

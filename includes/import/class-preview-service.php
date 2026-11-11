@@ -98,6 +98,11 @@ class Preview_Service {
 			return $record;
 		}
 
+		// Route by where a short link lands, not by the shortener's host:
+		// a pasted lnkd.in comment link would otherwise go to the generic
+		// provider and import the post author and body.
+		$this->expand_short_link( $record );
+
 		$provider         = $this->registry->for_url( $record->source_url );
 		$record->provider = $provider->slug();
 
@@ -134,6 +139,53 @@ class Preview_Service {
 		$this->flag_duplicates( $record );
 
 		return $record;
+	}
+
+	/**
+	 * Replace a pasted provider short link with its destination.
+	 *
+	 * Uses the redirect's final URL (lnkd.in/p/… comment links, t.co) or,
+	 * when the shortener answers with a 200 interstitial, the page's
+	 * outbound link. The destination must pass the same fetch policy as a
+	 * pasted URL; otherwise the short link stays and the reviewer is told.
+	 *
+	 * @param Preview_Record $record Record whose source_url may be a short link.
+	 */
+	protected function expand_short_link( Preview_Record $record ) {
+		$short = $record->source_url;
+		$host  = strtolower( (string) wp_parse_url( $short, PHP_URL_HOST ) );
+		if ( ! in_array( $host, Target_Verifier::SHORTENER_HOSTS, true ) ) {
+			return;
+		}
+
+		$response    = call_user_func( $this->fetcher, $short );
+		$destination = '';
+
+		if ( is_array( $response ) ) {
+			$final = (string) ( $response['final_url'] ?? '' );
+			if ( '' !== $final && strtolower( (string) wp_parse_url( $final, PHP_URL_HOST ) ) !== $host ) {
+				$destination = $final;
+			} elseif ( preg_match( '#<a\s[^>]*href="(https?://[^"]+)"[^>]*data-tracking-will-navigate#i', (string) ( $response['body'] ?? '' ), $m ) ) {
+				$destination = html_entity_decode( $m[1], ENT_QUOTES | ENT_HTML5 );
+			}
+		}
+
+		if ( '' === $destination || is_wp_error( Safe_Fetcher::validate_url( $destination ) ) ) {
+			$record->warnings[] = sprintf(
+				/* translators: %s: short link URL. */
+				__( 'The short link %s could not be expanded; paste the full post or comment URL instead.', 'social-webmention-importer' ),
+				$short
+			);
+			return;
+		}
+
+		$record->source_url = $destination;
+		$record->warnings[] = sprintf(
+			/* translators: 1: short link URL, 2: expanded URL. */
+			__( 'Expanded the short link %1$s to %2$s.', 'social-webmention-importer' ),
+			$short,
+			$destination
+		);
 	}
 
 	/**
