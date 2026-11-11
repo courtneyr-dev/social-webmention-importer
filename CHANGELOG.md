@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.6 — 2026-11-11
+
+- A LinkedIn "Copy link to comment" short link (`lnkd.in/p/…`) imported
+  the post's author and body instead of the reply. Two causes, both fixed:
+  pasted `lnkd.in` and `t.co` links are now expanded (redirect target, or
+  the interstitial's outbound link) before a provider is chosen, so they
+  reach the LinkedIn provider instead of the generic one; and comment
+  permalinks in LinkedIn's newer
+  `dashCommentUrn=urn:li:fsd_comment:({comment},urn:li:ugcPost:{post})`
+  shape are parsed alongside the older `commentUrn` form. Both shapes
+  dedupe to the same remote ID. The expanded URL must pass the fetch
+  policy, and a short link that can't be expanded is kept with a warning.
+
 ## 0.5.5 — 2026-09-24
 
 - Accessibility: verified Webmentions now carry a hidden
