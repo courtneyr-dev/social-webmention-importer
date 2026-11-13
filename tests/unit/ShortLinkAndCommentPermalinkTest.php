@@ -73,11 +73,11 @@ class ShortLinkAndCommentPermalinkTest extends WP_UnitTestCase {
 	}
 
 	public function test_linkedin_activity_page_extracts_full_post_author() {
-		$provider           = new LinkedIn_Provider();
-		$record             = new Preview_Record();
-		$record->source_url = 'https://www.linkedin.com/feed/update/urn:li:activity:7000000000000000001/';
-		$record->provider   = 'linkedin';
-		$normalized         = $provider->normalize( $record->source_url );
+		$provider              = new LinkedIn_Provider();
+		$record                = new Preview_Record();
+		$record->source_url    = 'https://www.linkedin.com/feed/update/urn:li:activity:7000000000000000001/';
+		$record->provider      = 'linkedin';
+		$normalized            = $provider->normalize( $record->source_url );
 		$record->canonical_url = $normalized['canonical'];
 		$record->remote_id     = $normalized['remote_id'];
 
@@ -131,11 +131,11 @@ class ShortLinkAndCommentPermalinkTest extends WP_UnitTestCase {
 	}
 
 	public function test_comment_permalink_never_inherits_the_post_authors_identity() {
-		$provider           = new LinkedIn_Provider();
-		$record             = new Preview_Record();
-		$record->source_url = 'https://www.linkedin.com/feed/update/urn:li:activity:7000000000000000001/?commentUrn=urn%3Ali%3Acomment%3A%28activity%3A7000000000000000001%2C7311111111111111111%29';
-		$record->provider   = 'linkedin';
-		$normalized         = $provider->normalize( $record->source_url );
+		$provider              = new LinkedIn_Provider();
+		$record                = new Preview_Record();
+		$record->source_url    = 'https://www.linkedin.com/feed/update/urn:li:activity:7000000000000000001/?commentUrn=urn%3Ali%3Acomment%3A%28activity%3A7000000000000000001%2C7311111111111111111%29';
+		$record->provider      = 'linkedin';
+		$normalized            = $provider->normalize( $record->source_url );
 		$record->canonical_url = $normalized['canonical'];
 		$record->remote_id     = $normalized['remote_id'];
 
@@ -168,11 +168,11 @@ class ShortLinkAndCommentPermalinkTest extends WP_UnitTestCase {
 		$ms = (int) ( new \DateTimeImmutable( '2026-08-17T15:39:50.312Z' ) )->format( 'Uv' );
 		$id = (string) ( ( $ms << 22 ) + 12345 );
 
-		$provider           = new LinkedIn_Provider();
-		$record             = new Preview_Record();
-		$record->source_url = 'https://www.linkedin.com/feed/update/urn:li:activity:7000000000000000001/?commentUrn=' . rawurlencode( "urn:li:comment:(activity:7000000000000000001,{$id})" );
-		$record->provider   = 'linkedin';
-		$normalized         = $provider->normalize( $record->source_url );
+		$provider              = new LinkedIn_Provider();
+		$record                = new Preview_Record();
+		$record->source_url    = 'https://www.linkedin.com/feed/update/urn:li:activity:7000000000000000001/?commentUrn=' . rawurlencode( "urn:li:comment:(activity:7000000000000000001,{$id})" );
+		$record->provider      = 'linkedin';
+		$normalized            = $provider->normalize( $record->source_url );
 		$record->canonical_url = $normalized['canonical'];
 		$record->remote_id     = $normalized['remote_id'];
 

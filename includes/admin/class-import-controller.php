@@ -11,6 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+use CourtneyRDev\SocialWebmentionImporter\Abilities\Abilities;
 use CourtneyRDev\SocialWebmentionImporter\Import\Comment_Importer;
 use CourtneyRDev\SocialWebmentionImporter\Import\Identity_Store;
 use CourtneyRDev\SocialWebmentionImporter\Import\Preview_Record;
@@ -273,7 +274,7 @@ class Import_Controller {
 	}
 
 	/**
-	 * Save the tools-screen settings (auto-approve permission).
+	 * Save the tools-screen settings.
 	 */
 	public static function handle_settings() {
 		check_admin_referer( 'swi_settings' );
@@ -283,6 +284,9 @@ class Import_Controller {
 		}
 
 		update_option( Plugin::OPTION_ALLOW_APPROVE, ! empty( $_POST['swi_allow_approve'] ) ? 1 : 0 );
+		if ( Abilities::available() ) {
+			update_option( Abilities::OPTION_PREVIEW, ! empty( $_POST['swi_ability_preview'] ) );
+		}
 
 		wp_safe_redirect(
 			add_query_arg(

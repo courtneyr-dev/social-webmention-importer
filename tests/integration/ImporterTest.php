@@ -373,7 +373,7 @@ class ImporterTest extends WP_UnitTestCase {
 		require_once ABSPATH . 'wp-admin/includes/plugin.php';
 		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
 
-		$submenu['tools.php'] = array();
+		$submenu['tools.php'] = array(); // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Test fixture resets the WordPress submenu before exercising the ordering callback.
 		add_submenu_page( 'tools.php', 'Import', 'Import', 'manage_options', 'import.php' );
 		\CourtneyRDev\SocialWebmentionImporter\Admin\Import_Page::register_page();
 		add_submenu_page( 'tools.php', 'Scheduled Actions', 'Scheduled Actions', 'manage_options', 'scheduled-actions' );
@@ -394,36 +394,36 @@ class ImporterTest extends WP_UnitTestCase {
 
 		// A moderator's explicit request publishes on import.
 		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
-		$record             = $this->curated_record();
-		$record->source_url = 'https://x.com/alexdoe/status/555';
+		$record                = $this->curated_record();
+		$record->source_url    = 'https://x.com/alexdoe/status/555';
 		$record->canonical_url = 'https://x.com/alexdoe/status/555';
-		$record->remote_id  = '555';
-		$record->content    = 'Approved-on-import content.';
-		$result             = Comment_Importer::import( $record, array(), true );
+		$record->remote_id     = '555';
+		$record->content       = 'Approved-on-import content.';
+		$result                = Comment_Importer::import( $record, array(), true );
 		$this->assertSame( '1', get_comment( $result['comment_id'] )->comment_approved );
 
 		// Default stays pending.
-		$record             = $this->curated_record();
-		$record->source_url = 'https://x.com/alexdoe/status/556';
+		$record                = $this->curated_record();
+		$record->source_url    = 'https://x.com/alexdoe/status/556';
 		$record->canonical_url = 'https://x.com/alexdoe/status/556';
-		$record->remote_id  = '556';
-		$record->content    = 'Default pending content.';
-		$result             = Comment_Importer::import( $record );
+		$record->remote_id     = '556';
+		$record->content       = 'Default pending content.';
+		$result                = Comment_Importer::import( $record );
 		$this->assertSame( '0', get_comment( $result['comment_id'] )->comment_approved );
 	}
 
 	public function test_provider_and_no_avatar_comment_classes() {
 		$with_avatar = Comment_Importer::import( $this->curated_record() );
 
-		$without              = $this->curated_record();
-		$without->source_url  = 'https://www.linkedin.com/feed/update/urn:li:activity:123?commentUrn=urn%3Ali%3Acomment%3A%28activity%3A123%2C456%29';
+		$without                = $this->curated_record();
+		$without->source_url    = 'https://www.linkedin.com/feed/update/urn:li:activity:123?commentUrn=urn%3Ali%3Acomment%3A%28activity%3A123%2C456%29';
 		$without->canonical_url = 'https://www.linkedin.com/feed/update/urn:li:activity:123?commentUrn=urn%3Ali%3Acomment%3A%28activity%3A123%2C456%29';
-		$without->provider    = 'linkedin';
-		$without->remote_id   = '123.456';
-		$without->avatar      = '';
-		$without->author_name = 'Jordan Sample';
-		$without->content     = 'A different LinkedIn reply.';
-		$no_avatar            = Comment_Importer::import( $without );
+		$without->provider      = 'linkedin';
+		$without->remote_id     = '123.456';
+		$without->avatar        = '';
+		$without->author_name   = 'Jordan Sample';
+		$without->content       = 'A different LinkedIn reply.';
+		$no_avatar              = Comment_Importer::import( $without );
 
 		$classes = Attribution::provider_comment_class( array( 'comment' ), array(), $with_avatar['comment_id'], get_comment( $with_avatar['comment_id'] ) );
 		$this->assertContains( 'swi-provider-x', $classes );

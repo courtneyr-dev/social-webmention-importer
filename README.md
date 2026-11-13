@@ -32,6 +32,14 @@ Requires WordPress 6.2+, PHP 8.2+, and the Webmention plugin (active).
 3. **Step 3** — the report lists one result per URL (imported / updated / skipped / failed, with reasons) and links each success to the comment edit screen and its public anchor. One row's failure never blocks the others.
 4. Approve the pending comments from **Comments** as usual.
 
+## Abilities
+
+| Ability | Capability | Switch option | Default |
+| --- | --- | --- | --- |
+| `social-webmention-importer/preview` | `manage_options`, plus permission to import to the existing target post | `swi_ability_preview` | Off |
+
+The preview ability fetches a public X, LinkedIn, or other URL and returns the same record shown by the admin preview flow. It doesn't store the admin flow's batch transient. Enable it under **Tools → Social Webmention Importer → Importer settings → Agent abilities**.
+
 ## Development
 
 ```bash
@@ -44,7 +52,7 @@ Tests never hit live networks; provider behavior is covered by sanitized fixture
 
 ## Uninstall
 
-Uninstalling removes only plugin settings (`swi_identities`, `swi_allow_reviewer_approve`) and expired preview transients. **Imported comments are never deleted** — they are content you curated. Delete them from the Comments screen if you want them gone.
+Uninstalling removes only plugin settings (`swi_identities`, `swi_allow_reviewer_approve`, `swi_ability_preview`) and expired preview transients. **Imported comments are never deleted** — they are content you curated. Delete them from the Comments screen if you want them gone.
 
 ## Documentation
 

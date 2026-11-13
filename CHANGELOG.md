@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Added the switched, non-public `social-webmention-importer/preview` ability. Administrators can enable it to fetch one public response URL for an existing post and return the same preview record as the admin flow without storing a batch transient.
+
 ## 0.5.6 — 2026-11-11
 
 - A LinkedIn "Copy link to comment" short link (`lnkd.in/p/…`) imported

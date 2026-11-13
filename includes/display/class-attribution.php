@@ -62,6 +62,8 @@ class Attribution {
 	 * @return string[]
 	 */
 	public static function provider_comment_class( $classes, $css_class, $comment_id, $comment ) {
+		unset( $css_class, $comment );
+
 		$provider = get_comment_meta( (int) $comment_id, '_swi_provider', true );
 		if ( ! $provider ) {
 			return $classes;
