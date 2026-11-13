@@ -11,6 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+use CourtneyRDev\SocialWebmentionImporter\Abilities\Abilities;
 use CourtneyRDev\SocialWebmentionImporter\Import\Comment_Importer;
 use CourtneyRDev\SocialWebmentionImporter\Import\Preview_Record;
 use CourtneyRDev\SocialWebmentionImporter\Plugin;
@@ -90,7 +91,7 @@ class Import_Page {
 			array_splice( $entries, $anchor + 1, 0, array( $ours ) );
 		}
 
-		$submenu['tools.php'] = $entries;
+		$submenu['tools.php'] = $entries; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Reordering this registered WordPress submenu is the purpose of the callback.
 	}
 
 	/**
@@ -307,6 +308,13 @@ class Import_Page {
 					<input type="checkbox" name="swi_allow_approve" id="swi-allow-approve" value="1" <?php checked( get_option( Plugin::OPTION_ALLOW_APPROVE ) ); ?> />
 					<?php esc_html_e( 'Let imports follow the site’s normal moderation rules instead of always starting as pending. Leave off to hold every import for review.', 'social-webmention-importer' ); ?>
 				</label>
+				<?php if ( Abilities::available() ) : ?>
+					<h3><?php esc_html_e( 'Agent abilities', 'social-webmention-importer' ); ?></h3>
+					<label for="swi-ability-preview">
+						<input type="checkbox" name="swi_ability_preview" id="swi-ability-preview" value="1" <?php checked( get_option( Abilities::OPTION_PREVIEW, false ) ); ?> />
+						<?php esc_html_e( 'Let agents fetch a public X, LinkedIn or other URL and preview it as a response to a post.', 'social-webmention-importer' ); ?>
+					</label>
+				<?php endif; ?>
 				<?php submit_button( __( 'Save settings', 'social-webmention-importer' ), 'secondary' ); ?>
 			</form>
 		<?php endif; ?>

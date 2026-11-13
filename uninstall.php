@@ -16,6 +16,7 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
 
 delete_option( 'swi_identities' );
 delete_option( 'swi_allow_reviewer_approve' );
+delete_option( 'swi_ability_preview' );
 
 // Preview/report transients (bounded: they expire in 30 minutes anyway).
 global $wpdb;

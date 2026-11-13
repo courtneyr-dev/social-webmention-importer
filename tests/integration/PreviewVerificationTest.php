@@ -29,7 +29,7 @@ class PreviewVerificationTest extends WP_UnitTestCase {
 			Fixtures::fetcher(
 				array(
 					'example.org/reply' => $source_body,
-					'lnkd.in/eShort1'      => $interstitial,
+					'lnkd.in/eShort1'   => $interstitial,
 				)
 			)
 		);
@@ -52,7 +52,7 @@ class PreviewVerificationTest extends WP_UnitTestCase {
 			Fixtures::fetcher(
 				array(
 					'example.org/reply' => $source_body,
-					'lnkd.in/eShort2'      => $interstitial,
+					'lnkd.in/eShort2'   => $interstitial,
 				)
 			)
 		);
