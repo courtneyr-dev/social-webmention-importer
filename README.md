@@ -38,7 +38,7 @@ Requires WordPress 6.2+, PHP 8.2+, and the Webmention plugin (active).
 | --- | --- | --- | --- |
 | `social-webmention-importer/preview` | `manage_options`, plus permission to import to the existing target post | `swi_ability_preview` | Off |
 
-The preview ability fetches a public X, LinkedIn, or other URL and returns the same record shown by the admin preview flow. It doesn't store the admin flow's batch transient. Enable it under **Tools → Social Webmention Importer → Importer settings → Agent abilities**.
+The preview ability fetches a public X, LinkedIn, or other URL and returns the same record shown by the admin preview flow. It doesn't store the admin flow's batch transient. Turn it on with the checkbox under **Tools → Social Webmention Importer → Importer settings → Agent abilities**, or with `wp option update swi_ability_preview 1`.
 
 ## Development
 

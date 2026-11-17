@@ -106,6 +106,9 @@ class AbilitiesTest extends WP_UnitTestCase {
 
 		foreach ( array( true, 1, '1' ) as $value ) {
 			update_option( Abilities::OPTION_PREVIEW, $value );
+			// Clear the option caches so the read below goes to the database, not the cached write.
+			wp_cache_delete( Abilities::OPTION_PREVIEW, 'options' );
+			wp_cache_delete( 'alloptions', 'options' );
 			$this->assertTrue( $ability->check_permissions( $input ), 'Stored value ' . wp_json_encode( $value ) . ' must read as on.' );
 		}
 	}
