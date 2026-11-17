@@ -267,10 +267,14 @@ class Abilities {
 	/**
 	 * Whether the preview switch is on.
 	 *
+	 * Only true, 1 and "1" count as on. The setting's sanitizer runs on
+	 * admin_init only, so a WP-CLI or direct write can store "false", "no"
+	 * or "off", and a plain (bool) cast would read those as on.
+	 *
 	 * @return bool
 	 */
 	protected static function preview_enabled() {
-		return (bool) get_option( self::OPTION_PREVIEW, false );
+		return in_array( get_option( self::OPTION_PREVIEW, false ), array( true, 1, '1' ), true );
 	}
 
 	/**
