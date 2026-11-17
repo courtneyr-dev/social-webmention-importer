@@ -86,6 +86,30 @@ class AbilitiesTest extends WP_UnitTestCase {
 		$this->assertFalse( $setting['default'] );
 	}
 
+	public function test_preview_switch_reads_only_true_values_as_on() {
+		$ability = wp_get_ability( Abilities::CATEGORY . '/preview' );
+		$input   = array(
+			'post_id' => self::$post_id,
+			'url'     => 'https://93.184.216.34/response',
+		);
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+
+		// Store raw values, as WP-CLI or a direct database write would.
+		remove_all_filters( 'sanitize_option_' . Abilities::OPTION_PREVIEW );
+
+		foreach ( array( 'false', 'no', 'off', '0', '', 0, false ) as $value ) {
+			update_option( Abilities::OPTION_PREVIEW, $value );
+			$result = $ability->check_permissions( $input );
+			$this->assertWPError( $result, 'Stored value ' . wp_json_encode( $value ) . ' must read as off.' );
+			$this->assertSame( 'swi_ability_disabled', $result->get_error_code() );
+		}
+
+		foreach ( array( true, 1, '1' ) as $value ) {
+			update_option( Abilities::OPTION_PREVIEW, $value );
+			$this->assertTrue( $ability->check_permissions( $input ), 'Stored value ' . wp_json_encode( $value ) . ' must read as on.' );
+		}
+	}
+
 	public function test_preview_permission_matrix_and_existing_post_requirement() {
 		$ability = wp_get_ability( Abilities::CATEGORY . '/preview' );
 		$input   = array(
@@ -98,6 +122,9 @@ class AbilitiesTest extends WP_UnitTestCase {
 
 		wp_set_current_user( self::factory()->user->create( array( 'role' => 'subscriber' ) ) );
 		$this->assertFalse( $ability->check_permissions( $input ), 'Subscribers are denied.' );
+
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'editor' ) ) );
+		$this->assertFalse( $ability->check_permissions( $input ), 'Editors are denied: they can moderate and edit the post but lack manage_options.' );
 
 		$operator_id = self::factory()->user->create( array( 'role' => 'subscriber' ) );
 		$operator    = get_userdata( $operator_id );
