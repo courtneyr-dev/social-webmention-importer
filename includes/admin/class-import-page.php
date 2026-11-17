@@ -314,6 +314,11 @@ class Import_Page {
 						<input type="checkbox" name="swi_ability_preview" id="swi-ability-preview" value="1" <?php checked( get_option( Abilities::OPTION_PREVIEW, false ) ); ?> />
 						<?php esc_html_e( 'Let agents fetch a public X, LinkedIn or other URL and preview it as a response to a post.', 'social-webmention-importer' ); ?>
 					</label>
+					<br />
+					<label for="swi-ability-import">
+						<input type="checkbox" name="swi_ability_import" id="swi-ability-import" value="1" <?php checked( get_option( Abilities::OPTION_IMPORT, false ) ); ?> />
+						<?php esc_html_e( 'Let agents import a public response URL as a comment on a post, pending moderation unless approval is allowed.', 'social-webmention-importer' ); ?>
+					</label>
 				<?php endif; ?>
 				<?php submit_button( __( 'Save settings', 'social-webmention-importer' ), 'secondary' ); ?>
 			</form>

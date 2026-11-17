@@ -1,8 +1,27 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 — 2026-11-16
 
-- Added the switched, non-public `social-webmention-importer/preview` ability. Administrators can enable it to fetch one public response URL for an existing post and return the same preview record as the admin flow without storing a batch transient.
+Two agent abilities for the WordPress Abilities API. Both register only
+when the API exists, both are switched off by default, and neither is
+public over MCP. Turn each on under **Tools → Social Webmention Importer →
+Importer settings → Agent abilities**.
+
+- Added `social-webmention-importer/preview` (switch `swi_ability_preview`).
+  It fetches one public response URL for an existing post and returns the
+  same preview record as the admin flow, without storing a batch transient.
+  It needs `manage_options` plus permission to import to the post.
+- Added `social-webmention-importer/import` (switch `swi_ability_import`).
+  It needs `confirm: true`, fetches the URL through the same preview
+  service, and imports or updates the comment through the existing
+  duplicate-detection path. It needs the same capabilities as preview.
+  A new comment stays pending unless the call sets `approve`, the
+  "allow reviewer approval" setting is on, and the user can moderate
+  comments. It never writes the identity store.
+- Each switch reads as on only for `true`, `1` and `"1"`, so
+  `wp option update swi_ability_preview false` (which stores the string
+  "false") leaves the ability off.
+- Uninstall deletes both switch options.
 
 ## 0.5.6 — 2026-11-11
 
