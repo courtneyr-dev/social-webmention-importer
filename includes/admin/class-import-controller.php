@@ -286,6 +286,7 @@ class Import_Controller {
 		update_option( Plugin::OPTION_ALLOW_APPROVE, ! empty( $_POST['swi_allow_approve'] ) ? 1 : 0 );
 		if ( Abilities::available() ) {
 			update_option( Abilities::OPTION_PREVIEW, ! empty( $_POST['swi_ability_preview'] ) );
+			update_option( Abilities::OPTION_IMPORT, ! empty( $_POST['swi_ability_import'] ) );
 		}
 
 		wp_safe_redirect(

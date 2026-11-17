@@ -37,8 +37,9 @@ Requires WordPress 6.2+, PHP 8.2+, and the Webmention plugin (active).
 | Ability | Capability | Switch option | Default |
 | --- | --- | --- | --- |
 | `social-webmention-importer/preview` | `manage_options`, plus permission to import to the existing target post | `swi_ability_preview` | Off |
+| `social-webmention-importer/import` | `manage_options`, plus permission to import to the existing target post | `swi_ability_import` | Off |
 
-The preview ability fetches a public X, LinkedIn, or other URL and returns the same record shown by the admin preview flow. It doesn't store the admin flow's batch transient. Turn it on with the checkbox under **Tools → Social Webmention Importer → Importer settings → Agent abilities**, or with `wp option update swi_ability_preview 1`.
+The preview ability fetches a public X, LinkedIn, or other URL and returns the same record shown by the admin preview flow. It doesn't store the admin flow's batch transient. The import ability requires explicit confirmation, fetches the URL through the same preview service, and imports or updates the comment through the existing importer. Turn either one on with its checkbox under **Tools → Social Webmention Importer → Importer settings → Agent abilities**, or with `wp option update swi_ability_preview 1` and `wp option update swi_ability_import 1`.
 
 ## Development
 
@@ -52,7 +53,7 @@ Tests never hit live networks; provider behavior is covered by sanitized fixture
 
 ## Uninstall
 
-Uninstalling removes only plugin settings (`swi_identities`, `swi_allow_reviewer_approve`, `swi_ability_preview`) and expired preview transients. **Imported comments are never deleted** — they are content you curated. Delete them from the Comments screen if you want them gone.
+Uninstalling removes only plugin settings (`swi_identities`, `swi_allow_reviewer_approve`, `swi_ability_preview`, `swi_ability_import`) and expired preview transients. **Imported comments are never deleted** — they are content you curated. Delete them from the Comments screen if you want them gone.
 
 ## Documentation
 
