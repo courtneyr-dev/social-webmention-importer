@@ -604,9 +604,11 @@ class AbilitiesTest extends WP_UnitTestCase {
 		update_option( 'comment_moderation', 1 );
 		$http_calls = 0;
 
+		// Each import gets its own fixture text: identical author and content on
+		// one post trip WordPress's duplicate-comment check, not the gates under test.
 		$setting_off_input            = $this->import_input( 'https://93.184.216.34/approval-setting-off' );
 		$setting_off_input['approve'] = true;
-		$setting_off                  = $this->execute_import_with_body( $setting_off_input, $this->response_body( true ), $http_calls );
+		$setting_off                  = $this->execute_import_with_body( $setting_off_input, $this->response_body( true, 'Approval setting off.' ), $http_calls );
 		$this->assertSame( '0', get_comment( $setting_off['comment_id'] )->comment_approved, 'The allow-approve option is off.' );
 
 		update_option( Plugin::OPTION_ALLOW_APPROVE, true );
@@ -615,13 +617,13 @@ class AbilitiesTest extends WP_UnitTestCase {
 		$no_cap_input            = $this->import_input( 'https://93.184.216.34/approval-no-capability' );
 		$no_cap_input['approve'] = true;
 		$this->assertFalse( Abilities::can_import( $no_cap_input ), 'A user without moderation capability cannot pass the ability permission callback.' );
-		$no_cap = $this->execute_import_callback_with_body( $no_cap_input, $this->response_body( true ), $http_calls );
+		$no_cap = $this->execute_import_callback_with_body( $no_cap_input, $this->response_body( true, 'No moderation capability.' ), $http_calls );
 		$this->assertSame( '0', get_comment( $no_cap['comment_id'] )->comment_approved, 'The importer ignores approve without moderate_comments.' );
 
 		wp_set_current_user( $admin_id );
 		$allowed_input            = $this->import_input( 'https://93.184.216.34/approval-allowed' );
 		$allowed_input['approve'] = true;
-		$allowed                  = $this->execute_import_with_body( $allowed_input, $this->response_body( true ), $http_calls );
+		$allowed                  = $this->execute_import_with_body( $allowed_input, $this->response_body( true, 'Both approval gates open.' ), $http_calls );
 		$this->assertSame( '1', get_comment( $allowed['comment_id'] )->comment_approved, 'Both approval gates are open.' );
 		$this->assertSame( 3, $http_calls );
 	}
