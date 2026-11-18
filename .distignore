@@ -12,6 +12,7 @@
 composer.json
 composer.lock
 .gitignore
+.gitattributes
 .distignore
 
 # OS files
