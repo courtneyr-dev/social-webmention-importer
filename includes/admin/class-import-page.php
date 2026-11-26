@@ -106,6 +106,10 @@ class Import_Page {
 		if ( ! Plugin::user_can_import() ) {
 			return;
 		}
+		$post = get_post();
+		if ( $post && ! Import_Controller::review_target( $post->ID ) ) {
+			return;
+		}
 
 		wp_enqueue_script(
 			'swi-editor',
@@ -133,13 +137,16 @@ class Import_Page {
 	 * entry beside Webmention's pointing at the canonical Tools screen.
 	 */
 	public static function register_page() {
-		add_management_page(
+		$hook = add_management_page(
 			__( 'Social Webmention Importer', 'social-webmention-importer' ),
 			__( 'Social Webmention Importer', 'social-webmention-importer' ),
 			'moderate_comments',
 			'social-webmention-importer',
 			array( static::class, 'render' )
 		);
+		if ( $hook ) {
+			add_action( 'load-' . $hook, array( static::class, 'authorize_preselected_target' ) );
+		}
 
 		if ( class_exists( 'IndieWeb_Plugin' ) ) {
 			add_submenu_page(
@@ -149,6 +156,16 @@ class Import_Page {
 				'moderate_comments',
 				'tools.php?page=social-webmention-importer'
 			);
+		}
+	}
+
+	/**
+	 * Authorize the linked post before WordPress starts the admin response.
+	 */
+	public static function authorize_preselected_target() {
+		$post_id = isset( $_GET['swi_post'] ) ? absint( $_GET['swi_post'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only navigation.
+		if ( $post_id && ! Import_Controller::review_target( $post_id ) ) {
+			wp_die( esc_html__( 'You are not allowed to use the importer for this post.', 'social-webmention-importer' ), 403 );
 		}
 	}
 
@@ -163,13 +180,18 @@ class Import_Page {
 		}
 
 		wp_enqueue_style( 'swi-admin', SWI_PLUGIN_URL . 'assets/css/admin.css', array(), SWI_VERSION );
-		wp_enqueue_script( 'swi-admin', SWI_PLUGIN_URL . 'assets/js/admin.js', array(), SWI_VERSION, true );
+		wp_enqueue_script( 'swi-admin', SWI_PLUGIN_URL . 'assets/js/admin.js', array( 'media-views' ), SWI_VERSION, true );
 		wp_localize_script(
 			'swi-admin',
 			'swiAdmin',
 			array(
-				'ajaxUrl'     => admin_url( 'admin-ajax.php' ),
-				'searchNonce' => wp_create_nonce( 'swi_post_search' ),
+				'ajaxUrl'        => admin_url( 'admin-ajax.php' ),
+				'searchNonce'    => wp_create_nonce( 'swi_post_search' ),
+				'avatarTitle'    => __( 'Choose an avatar', 'social-webmention-importer' ),
+				/* translators: %s: Media Library attachment ID. */
+				'avatarSelected' => __( 'Avatar selected. Media Library ID: %s.', 'social-webmention-importer' ),
+				/* translators: 1: visible response count, 2: total response count. */
+				'queueCount'     => __( '%1$s of %2$s responses shown.', 'social-webmention-importer' ),
 			)
 		);
 
@@ -341,6 +363,15 @@ class Import_Page {
 		}
 
 		$post_id = (int) $batch['post_id'];
+		$records = array_map( array( Preview_Record::class, 'from_array' ), $batch['records'] );
+		$states  = array(
+			'new'         => __( 'New', 'social-webmention-importer' ),
+			'pending'     => __( 'Pending', 'social-webmention-importer' ),
+			'approved'    => __( 'Approved', 'social-webmention-importer' ),
+			'duplicate'   => __( 'Duplicate', 'social-webmention-importer' ),
+			'source-gone' => __( 'Source gone', 'social-webmention-importer' ),
+			'unavailable' => __( 'Unavailable', 'social-webmention-importer' ),
+		);
 		?>
 		<h2>
 			<?php
@@ -368,14 +399,57 @@ class Import_Page {
 			<input type="hidden" name="action" value="swi_import" />
 			<input type="hidden" name="swi_batch" value="<?php echo esc_attr( $token ); ?>" />
 
-			<?php foreach ( $batch['records'] as $index => $stored ) : ?>
-				<?php self::render_review_card( $index, Preview_Record::from_array( $stored ) ); ?>
-			<?php endforeach; ?>
+			<?php if ( count( $records ) > 1 ) : ?>
+				<?php
+				$hosts = array_unique( array_filter( array_map( static fn( $record ) => wp_parse_url( $record->source_url, PHP_URL_HOST ), $records ) ) );
+				sort( $hosts, SORT_NATURAL | SORT_FLAG_CASE );
+				?>
+				<fieldset class="hidden" data-swi-queue-controls>
+					<legend><?php esc_html_e( 'Review queue', 'social-webmention-importer' ); ?></legend>
+					<label for="swi-queue-state"><?php esc_html_e( 'State', 'social-webmention-importer' ); ?></label>
+					<select id="swi-queue-state">
+						<option value=""><?php esc_html_e( 'All states', 'social-webmention-importer' ); ?></option>
+						<?php foreach ( $states as $state => $label ) : ?>
+							<option value="<?php echo esc_attr( $state ); ?>"><?php echo esc_html( $label ); ?></option>
+						<?php endforeach; ?>
+					</select>
+					<label for="swi-queue-source"><?php esc_html_e( 'Source', 'social-webmention-importer' ); ?></label>
+					<select id="swi-queue-source">
+						<option value=""><?php esc_html_e( 'All sources', 'social-webmention-importer' ); ?></option>
+						<?php foreach ( $hosts as $host ) : ?>
+							<option value="<?php echo esc_attr( $host ); ?>"><?php echo esc_html( $host ); ?></option>
+						<?php endforeach; ?>
+					</select>
+					<label for="swi-queue-order"><?php esc_html_e( 'Sort by', 'social-webmention-importer' ); ?></label>
+					<select id="swi-queue-order">
+						<option value=""><?php esc_html_e( 'Input order', 'social-webmention-importer' ); ?></option>
+						<option value="state"><?php esc_html_e( 'State', 'social-webmention-importer' ); ?></option>
+						<option value="source"><?php esc_html_e( 'Source URL', 'social-webmention-importer' ); ?></option>
+					</select>
+					<p class="description"><?php esc_html_e( 'Only checked responses shown by these filters will import.', 'social-webmention-importer' ); ?></p>
+					<p role="status" aria-live="polite" aria-atomic="true" data-swi-queue-status></p>
+				</fieldset>
+			<?php endif; ?>
+			<div data-swi-queue>
+				<?php foreach ( $records as $index => $record ) : ?>
+					<?php
+					$state = self::review_state( $record );
+					self::render_review_card( $index, $record, $state, $states[ $state ] );
+					?>
+				<?php endforeach; ?>
+			</div>
 
 			<p>
 				<label for="swi-approve-now">
 					<input type="checkbox" name="swi_approve_now" id="swi-approve-now" value="1" />
 					<?php esc_html_e( 'Approve these responses immediately instead of holding them as pending. You reviewed each one above; this publishes them on import.', 'social-webmention-importer' ); ?>
+				</label>
+			</p>
+
+			<p>
+				<label for="swi-skip-author-email">
+					<input type="checkbox" name="swi_skip_author_email" id="swi-skip-author-email" value="1" />
+					<?php esc_html_e( 'Skip the new-comment email to the post author for this historical import.', 'social-webmention-importer' ); ?>
 				</label>
 			</p>
 
@@ -385,21 +459,72 @@ class Import_Page {
 	}
 
 	/**
+	 * Return the filterable review state, preferring the most specific state.
+	 *
+	 * @param Preview_Record $record Preview record.
+	 * @return string
+	 */
+	private static function review_state( Preview_Record $record ) {
+		if ( 'duplicate' === $record->duplicate_status ) {
+			return 'duplicate';
+		}
+		if ( $record->existing_comment_id ) {
+			if ( get_comment_meta( $record->existing_comment_id, '_swi_source_gone', true ) ) {
+				return 'source-gone';
+			}
+			$status = wp_get_comment_status( $record->existing_comment_id );
+			if ( 'approved' === $status ) {
+				return 'approved';
+			}
+			if ( 'unapproved' === $status ) {
+				return 'pending';
+			}
+		}
+		return $record->error ? 'unavailable' : 'new';
+	}
+
+	/**
 	 * One editable preview card.
 	 *
 	 * @param int            $index  Row index.
 	 * @param Preview_Record $record Record.
+	 * @param string         $state  Queue state key.
+	 * @param string         $label  Queue state label.
 	 */
-	protected static function render_review_card( $index, Preview_Record $record ) {
+	protected static function render_review_card( $index, Preview_Record $record, $state, $label ) {
 		$field = fn( $name ) => "rows[{$index}][{$name}]";
 		$id    = fn( $name ) => "swi-{$index}-{$name}";
 
 		$mode_is_curated = Plugin::MODE_SOCIAL_LINKBACK === $record->mode;
 		?>
-		<fieldset class="swi-card <?php echo $record->error ? 'swi-card--error' : ''; ?>">
+		<fieldset class="swi-card <?php echo $record->error ? 'swi-card--error' : ''; ?>"
+			data-swi-state="<?php echo esc_attr( $state ); ?>"
+			data-swi-state-label="<?php echo esc_attr( $label ); ?>"
+			data-swi-source="<?php echo esc_attr( $record->source_url ); ?>"
+			data-swi-host="<?php echo esc_attr( wp_parse_url( $record->source_url, PHP_URL_HOST ) ?? '' ); ?>">
 			<legend>
 				<?php echo esc_html( sprintf( '#%d — %s', $index + 1, $record->source_url ) ); ?>
 			</legend>
+
+			<details>
+				<summary><?php esc_html_e( 'Source details', 'social-webmention-importer' ); ?></summary>
+				<dl>
+					<dt><?php esc_html_e( 'State', 'social-webmention-importer' ); ?></dt>
+					<dd><?php echo esc_html( $label ); ?></dd>
+					<dt><?php esc_html_e( 'Provider', 'social-webmention-importer' ); ?></dt>
+					<dd><?php echo esc_html( $record->provider ); ?></dd>
+					<dt><?php esc_html_e( 'Original source URL', 'social-webmention-importer' ); ?></dt>
+					<dd><?php echo esc_html( $record->source_url ); ?></dd>
+					<?php if ( $record->canonical_url && $record->canonical_url !== $record->source_url ) : ?>
+						<dt><?php esc_html_e( 'Canonical source URL', 'social-webmention-importer' ); ?></dt>
+						<dd><?php echo esc_html( $record->canonical_url ); ?></dd>
+					<?php endif; ?>
+					<?php if ( $record->existing_comment_id ) : ?>
+						<dt><?php esc_html_e( 'Existing comment ID', 'social-webmention-importer' ); ?></dt>
+						<dd><?php echo esc_html( $record->existing_comment_id ); ?></dd>
+					<?php endif; ?>
+				</dl>
+			</details>
 
 			<?php if ( $record->error ) : ?>
 				<p class="swi-error" role="alert"><?php echo esc_html( $record->error ); ?></p>
@@ -408,11 +533,14 @@ class Import_Page {
 
 				<p class="swi-card__status">
 					<label>
-						<input type="checkbox" name="<?php echo esc_attr( $field( 'import' ) ); ?>" value="1" <?php checked( 'duplicate' !== $record->duplicate_status ); ?> />
+						<input type="checkbox" name="<?php echo esc_attr( $field( 'import' ) ); ?>" value="1" data-swi-include <?php checked( ! in_array( $state, array( 'duplicate', 'source-gone' ), true ) ); ?> />
 						<strong><?php esc_html_e( 'Import this response', 'social-webmention-importer' ); ?></strong>
 					</label>
 
 					<span class="swi-badge swi-badge--provider"><?php echo esc_html( strtoupper( $record->provider ) ); ?></span>
+					<?php if ( in_array( $state, array( 'pending', 'approved', 'source-gone' ), true ) ) : ?>
+						<span class="swi-badge"><?php echo esc_html( $label ); ?></span>
+					<?php endif; ?>
 					<span class="swi-badge swi-badge--<?php echo esc_attr( $record->verification ); ?>">
 						<?php
 						if ( 'verified' === $record->verification ) {
@@ -462,10 +590,11 @@ class Import_Page {
 						<label for="<?php echo esc_attr( $id( 'avatar' ) ); ?>"><?php esc_html_e( 'Avatar URL or Media Library ID', 'social-webmention-importer' ); ?></label>
 						<input type="text" id="<?php echo esc_attr( $id( 'avatar' ) ); ?>" name="<?php echo esc_attr( $field( 'avatar' ) ); ?>"
 							value="<?php echo esc_attr( $record->avatar ); ?>" data-swi-avatar-input />
-						<button type="button" class="button" data-swi-media-picker="<?php echo esc_attr( $id( 'avatar' ) ); ?>"><?php esc_html_e( 'Choose from Media Library', 'social-webmention-importer' ); ?></button>
+						<button type="button" class="button hidden" data-swi-media-picker="<?php echo esc_attr( $id( 'avatar' ) ); ?>"><?php esc_html_e( 'Choose from Media Library', 'social-webmention-importer' ); ?></button>
 						<?php if ( $record->avatar && ! is_numeric( $record->avatar ) ) : ?>
 							<img src="<?php echo esc_url( $record->avatar ); ?>" alt="" width="48" height="48" class="swi-avatar-preview" />
 						<?php endif; ?>
+						<span role="status" aria-live="polite" aria-atomic="true" data-swi-media-status></span>
 					</p>
 					<p>
 						<label for="<?php echo esc_attr( $id( 'published_gmt' ) ); ?>"><?php esc_html_e( 'Published (GMT, YYYY-MM-DD HH:MM:SS)', 'social-webmention-importer' ); ?></label>

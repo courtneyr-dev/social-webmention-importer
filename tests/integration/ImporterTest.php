@@ -115,6 +115,18 @@ class ImporterTest extends WP_UnitTestCase {
 		$this->assertSame( '', $comment->comment_author_IP );
 	}
 
+	public function test_attachment_id_is_stored_as_an_avatar_url() {
+		$attachment_id  = wp_insert_attachment(
+			array( 'post_mime_type' => 'image/jpeg' ),
+			'swi-avatar.jpg'
+		);
+		$record         = $this->curated_record();
+		$record->avatar = (string) $attachment_id;
+		$result         = Comment_Importer::import( $record, array( 'avatar' ) );
+		$this->assertSame( Comment_Importer::IMPORTED, $result['status'] );
+		$this->assertSame( wp_get_attachment_url( $attachment_id ), get_comment_meta( $result['comment_id'], 'avatar', true ) );
+	}
+
 	public function test_verified_import_uses_webmention_schema() {
 		$result  = Comment_Importer::import( $this->verified_record() );
 		$comment = get_comment( $result['comment_id'] );

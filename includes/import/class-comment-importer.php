@@ -182,9 +182,10 @@ class Comment_Importer {
 	 * @param bool           $approve       Approve on import. Only honored for users who can
 	 *                                      moderate comments; this is the "explicit reviewer
 	 *                                      action" the no-auto-publish rule requires.
+	 * @param bool           $skip_author_email Whether the reviewer opted out of author mail for this historical import.
 	 * @return array{status:string,comment_id:int,message:string}
 	 */
-	public static function import( Preview_Record $record, $manual_fields = array(), $approve = false ) {
+	public static function import( Preview_Record $record, $manual_fields = array(), $approve = false, $skip_author_email = false ) {
 		$valid = self::validate( $record );
 		if ( is_wp_error( $valid ) ) {
 			return array(
@@ -198,17 +199,60 @@ class Comment_Importer {
 
 		$commentdata = self::build_commentdata( $record, $manual_fields );
 
-		if ( $existing ) {
-			$result = self::update_existing( $existing, $record, $commentdata, $manual_fields );
-			if ( self::UPDATED === $result['status'] ) {
-				self::maybe_approve( $result['comment_id'], $approve );
+		$notify_author = static function ( $notify, $comment_id ) use ( $commentdata ) {
+			$comment = get_comment( $comment_id );
+			if ( $comment && (int) $comment->comment_post_ID === (int) $commentdata['comment_post_ID']
+				&& get_comment_meta( $comment_id, '_swi_original_source_url', true ) === $commentdata['comment_meta']['_swi_original_source_url'] ) {
+				return false;
 			}
-			return $result;
+			return $notify;
+		};
+		if ( $skip_author_email ) {
+			add_filter( 'notify_post_author', $notify_author, PHP_INT_MAX, 2 );
 		}
 
-		// Force pending unless the site setting allows reviewer approval.
+		try {
+			if ( $existing ) {
+				$result = self::update_existing( $existing, $record, $commentdata, $manual_fields );
+				if ( self::UPDATED === $result['status'] ) {
+					self::maybe_approve( $result['comment_id'], $approve );
+				}
+				return $result;
+			}
+
+			$comment_id = self::insert_comment( $commentdata );
+			if ( is_wp_error( $comment_id ) ) {
+				return array(
+					'status'     => self::FAILED_INSERTION,
+					'comment_id' => 0,
+					'message'    => $comment_id->get_error_message(),
+				);
+			}
+
+			$approved = self::maybe_approve( (int) $comment_id, $approve );
+			return array(
+				'status'     => self::IMPORTED,
+				'comment_id' => (int) $comment_id,
+				'message'    => $approved
+					? __( 'Imported and approved.', 'social-webmention-importer' )
+					: __( 'Imported (pending moderation).', 'social-webmention-importer' ),
+			);
+		} finally {
+			if ( $skip_author_email ) {
+				remove_filter( 'notify_post_author', $notify_author, PHP_INT_MAX );
+			}
+		}//end try
+	}
+
+	/**
+	 * Insert with the moderation rules for imported comments.
+	 *
+	 * @param array $commentdata Sanitized comment data.
+	 * @return int|WP_Error
+	 */
+	private static function insert_comment( $commentdata ) {
 		$force_pending = ! get_option( Plugin::OPTION_ALLOW_APPROVE );
-		$approve_cb    = function ( $approved ) use ( $force_pending ) {
+		$approve_cb    = static function ( $approved ) use ( $force_pending ) {
 			return $force_pending ? 0 : $approved;
 		};
 		add_filter( 'pre_comment_approved', $approve_cb, 999 );
@@ -218,30 +262,12 @@ class Comment_Importer {
 		// same dance around its insert.
 		remove_action( 'check_comment_flood', 'check_comment_flood_db', 10 );
 
-		// Imported content is sanitized by build_commentdata(); run the rest
-		// of core's checks (moderation, spam hooks) normally.
-		$comment_id = wp_new_comment( $commentdata, true );
-
-		add_action( 'check_comment_flood', 'check_comment_flood_db', 10, 4 );
-		remove_filter( 'pre_comment_approved', $approve_cb, 999 );
-
-		if ( is_wp_error( $comment_id ) ) {
-			return array(
-				'status'     => self::FAILED_INSERTION,
-				'comment_id' => 0,
-				'message'    => $comment_id->get_error_message(),
-			);
+		try {
+			return wp_new_comment( $commentdata, true );
+		} finally {
+			add_action( 'check_comment_flood', 'check_comment_flood_db', 10, 4 );
+			remove_filter( 'pre_comment_approved', $approve_cb, 999 );
 		}
-
-		$approved = self::maybe_approve( (int) $comment_id, $approve );
-
-		return array(
-			'status'     => self::IMPORTED,
-			'comment_id' => (int) $comment_id,
-			'message'    => $approved
-				? __( 'Imported and approved.', 'social-webmention-importer' )
-				: __( 'Imported (pending moderation).', 'social-webmention-importer' ),
-		);
 	}
 
 	/**
@@ -256,7 +282,7 @@ class Comment_Importer {
 		if ( ! $approve || ! $comment_id || ! current_user_can( 'moderate_comments' ) ) {
 			return false;
 		}
-		return (bool) wp_set_comment_status( $comment_id, 'approve' );
+		return 'approved' === wp_get_comment_status( $comment_id ) || (bool) wp_set_comment_status( $comment_id, 'approve' );
 	}
 
 	/**
@@ -300,8 +326,13 @@ class Comment_Importer {
 			$meta['webmention_last_modified'] = current_time( 'mysql', true );
 		}
 
-		if ( '' !== $record->avatar ) {
-			$meta['avatar'] = is_numeric( $record->avatar ) ? (int) $record->avatar : esc_url_raw( $record->avatar );
+		$avatar = $record->avatar;
+		if ( is_numeric( $avatar ) ) {
+			$attachment_id = (int) $avatar;
+			$avatar        = wp_attachment_is_image( $attachment_id ) ? wp_get_attachment_url( $attachment_id ) : '';
+		}
+		if ( $avatar ) {
+			$meta['avatar'] = esc_url_raw( $avatar );
 		}
 
 		return array(

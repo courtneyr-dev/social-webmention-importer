@@ -61,6 +61,10 @@ class Plugin {
 		Comment_Importer::register_meta();
 		Attribution::init();
 
+		if ( function_exists( 'wp_register_entity_actions' ) ) {
+			Import_Controller::init_entity_actions();
+		}
+
 		if ( is_admin() ) {
 			Import_Page::init();
 			Import_Controller::init();

@@ -46,7 +46,22 @@ class Import_Controller {
 
 		add_filter( 'comment_row_actions', array( static::class, 'comment_row_actions' ), 10, 2 );
 		add_filter( 'post_row_actions', array( static::class, 'post_row_actions' ), 10, 2 );
+		add_filter( 'page_row_actions', array( static::class, 'post_row_actions' ), 10, 2 );
 		add_action( 'post_submitbox_misc_actions', array( static::class, 'submitbox_link' ) );
+	}
+
+	/**
+	 * Register hooks used by the editor and its REST requests.
+	 */
+	public static function init_entity_actions() {
+		add_action( 'wp_entity_actions_api_init', array( static::class, 'register_entity_actions' ) );
+		add_action( 'rest_api_init', array( static::class, 'register_review_url_field' ) );
+		add_action(
+			'init',
+			static function () {
+				wp_register_script_module( 'swi-entity-actions', SWI_PLUGIN_URL . 'assets/js/entity-actions.js', array(), SWI_VERSION );
+			}
+		);
 	}
 
 	/**
@@ -136,7 +151,8 @@ class Import_Controller {
 		$results = array();
 
 		// Explicit reviewer choice to publish on import (never a default).
-		$approve_now = ! empty( $_POST['swi_approve_now'] );
+		$approve_now       = ! empty( $_POST['swi_approve_now'] );
+		$skip_author_email = ! empty( $_POST['swi_skip_author_email'] );
 
 		foreach ( $batch['records'] as $index => $stored ) {
 			$record = Preview_Record::from_array( $stored );
@@ -175,7 +191,7 @@ class Import_Controller {
 				continue;
 			}
 
-			$result               = Comment_Importer::import( $record, $manual_fields, $approve_now );
+			$result               = Comment_Importer::import( $record, $manual_fields, $approve_now, $skip_author_email );
 			$result['source_url'] = $record->source_url;
 			$results[]            = $result;
 
@@ -332,6 +348,7 @@ class Import_Controller {
 		// Remote deletion / privatization: unpublish and alert, never silently keep.
 		if ( '' !== $record->error || ( 'unknown' === $record->verification && '' === $record->author_name && '' === $record->content ) ) {
 			wp_set_comment_status( $comment_id, 'hold' );
+			update_comment_meta( $comment_id, '_swi_source_gone', true );
 
 			$post_title = get_the_title( $comment->comment_post_ID );
 			wp_mail(
@@ -354,6 +371,9 @@ class Import_Controller {
 		$record->existing_comment_id = $comment_id;
 
 		$result = Comment_Importer::import( $record, array() );
+		if ( Comment_Importer::UPDATED === $result['status'] ) {
+			delete_comment_meta( $comment_id, '_swi_source_gone' );
+		}
 
 		wp_safe_redirect( add_query_arg( 'swi_refreshed', $result['status'], wp_get_referer() ?: admin_url( 'edit-comments.php' ) ) );
 		exit;
@@ -456,10 +476,11 @@ class Import_Controller {
 	 * @return string[]
 	 */
 	public static function post_row_actions( $actions, $post ) {
-		if ( 'publish' === $post->post_status && Plugin::user_can_import( $post->ID ) && post_type_supports( $post->post_type, 'webmentions' ) ) {
+		$url = self::list_review_url( $post->ID );
+		if ( $url ) {
 			$actions['swi_import'] = sprintf(
 				'<a href="%s">%s</a>',
-				esc_url( self::importer_url_for_post( $post->ID ) ),
+				esc_url( $url ),
 				esc_html__( 'Import social responses', 'social-webmention-importer' )
 			);
 		}
@@ -472,13 +493,81 @@ class Import_Controller {
 	 * @param \WP_Post $post Post being edited.
 	 */
 	public static function submitbox_link( $post ) {
-		if ( 'publish' !== $post->post_status || ! Plugin::user_can_import( $post->ID ) ) {
+		if ( 'publish' !== $post->post_status || ! self::review_target( $post->ID ) ) {
 			return;
 		}
 		printf(
 			'<div class="misc-pub-section"><a href="%s">%s</a></div>',
 			esc_url( self::importer_url_for_post( $post->ID ) ),
 			esc_html__( 'Import social responses', 'social-webmention-importer' )
+		);
+	}
+
+	/**
+	 * Resolve the target shared by the editor and the review entry points.
+	 *
+	 * @param int $post_id Post ID.
+	 * @return \WP_Post|null
+	 */
+	public static function review_target( $post_id ) {
+		if ( ! $post_id || ! Plugin::user_can_import( $post_id ) ) {
+			return null;
+		}
+
+		return get_post( $post_id );
+	}
+
+	/**
+	 * Resolve the review URL for an eligible list row.
+	 *
+	 * @param int $post_id Post ID.
+	 * @return string
+	 */
+	private static function list_review_url( $post_id ) {
+		$post = self::review_target( $post_id );
+		if ( ! $post || 'publish' !== $post->post_status || ! post_type_supports( $post->post_type, 'webmentions' ) ) {
+			return '';
+		}
+		return self::importer_url_for_post( $post->ID );
+	}
+
+	/**
+	 * Register the Site Editor Pages list action, available in WordPress 7.2.
+	 */
+	public static function register_entity_actions() {
+		wp_register_entity_actions(
+			'social-webmention-importer',
+			'postType',
+			'page',
+			array(
+				array(
+					'id'           => 'swi-import-social-responses',
+					'label'        => __( 'Import social responses', 'social-webmention-importer' ),
+					'context'      => 'list',
+					'supportsBulk' => false,
+				),
+			),
+			'swi-entity-actions'
+		);
+	}
+
+	/**
+	 * Expose a per-user action destination to edit-context Page records.
+	 */
+	public static function register_review_url_field() {
+		register_rest_field(
+			'page',
+			'swi_review_url',
+			array(
+				'get_callback' => static function ( $page ) {
+					return self::list_review_url( $page['id'] );
+				},
+				'schema'       => array(
+					'type'     => 'string',
+					'context'  => array( 'edit' ),
+					'readonly' => true,
+				),
+			)
 		);
 	}
 
