@@ -7,6 +7,7 @@
 
 namespace CourtneyRDev\SocialWebmentionImporter\Tests\Integration;
 
+use CourtneyRDev\SocialWebmentionImporter\Admin\Import_Controller;
 use CourtneyRDev\SocialWebmentionImporter\Display\Attribution;
 use CourtneyRDev\SocialWebmentionImporter\Import\Comment_Importer;
 use CourtneyRDev\SocialWebmentionImporter\Import\Duplicate_Detector;
@@ -115,16 +116,49 @@ class ImporterTest extends WP_UnitTestCase {
 		$this->assertSame( '', $comment->comment_author_IP );
 	}
 
-	public function test_attachment_id_is_stored_as_an_avatar_url() {
-		$attachment_id  = wp_insert_attachment(
+	public function test_attachment_avatar_keeps_its_id_and_follows_the_current_url() {
+		$attachment_id = wp_insert_attachment(
 			array( 'post_mime_type' => 'image/jpeg' ),
 			'swi-avatar.jpg'
 		);
-		$record         = $this->curated_record();
-		$record->avatar = (string) $attachment_id;
-		$result         = Comment_Importer::import( $record, array( 'avatar' ) );
+		$record        = $this->curated_record();
+		$original      = Comment_Importer::import( $record );
+		$this->assertSame( Comment_Importer::IMPORTED, $original['status'] );
+
+		$manual_fields = Import_Controller::apply_reviewer_edits( $record, array( 'avatar' => (string) $attachment_id ) );
+		$result        = Comment_Importer::import( $record, $manual_fields );
+		$this->assertSame( Comment_Importer::UPDATED, $result['status'] );
+		$this->assertSame( $original['comment_id'], $result['comment_id'] );
+		$this->assertSame( (string) $attachment_id, get_comment_meta( $result['comment_id'], 'avatar', true ) );
+
+		if ( class_exists( '\Webmention\Avatar' ) ) {
+			$comment      = get_comment( $result['comment_id'] );
+			$original_url = wp_get_attachment_url( $attachment_id );
+			$this->assertSame( $original_url, get_avatar_url( $comment ) );
+
+			update_post_meta( $attachment_id, '_wp_attached_file', 'swi-avatar-moved.jpg' );
+			$current_url = wp_get_attachment_url( $attachment_id );
+			$this->assertNotSame( $original_url, $current_url );
+			$this->assertSame( $current_url, get_avatar_url( $comment ) );
+		}
+	}
+
+	public function test_external_avatar_remains_a_url_and_nonimage_id_is_ignored() {
+		$record        = $this->curated_record();
+		$avatar_url    = 'https://example.org/reviewer-avatar.png';
+		$manual_fields = Import_Controller::apply_reviewer_edits( $record, array( 'avatar' => $avatar_url ) );
+		$result        = Comment_Importer::import( $record, $manual_fields );
 		$this->assertSame( Comment_Importer::IMPORTED, $result['status'] );
-		$this->assertSame( wp_get_attachment_url( $attachment_id ), get_comment_meta( $result['comment_id'], 'avatar', true ) );
+		$this->assertSame( $avatar_url, get_comment_meta( $result['comment_id'], 'avatar', true ) );
+
+		$attachment_id = wp_insert_attachment(
+			array( 'post_mime_type' => 'application/pdf' ),
+			'swi-document.pdf'
+		);
+		$manual_fields = Import_Controller::apply_reviewer_edits( $record, array( 'avatar' => (string) $attachment_id ) );
+		$result        = Comment_Importer::import( $record, $manual_fields );
+		$this->assertSame( Comment_Importer::UPDATED, $result['status'] );
+		$this->assertSame( $avatar_url, get_comment_meta( $result['comment_id'], 'avatar', true ) );
 	}
 
 	public function test_verified_import_uses_webmention_schema() {
@@ -187,6 +221,33 @@ class ImporterTest extends WP_UnitTestCase {
 		);
 		$this->assertCount( 1, $comments, 'No duplicate comment rows.' );
 		$this->assertStringContainsString( '(edited)', $comments[0]->comment_content );
+	}
+
+	public function test_only_successful_update_from_available_source_clears_gone_flag() {
+		$record     = $this->curated_record();
+		$result     = Comment_Importer::import( $record );
+		$comment_id = $result['comment_id'];
+		$this->assertSame( Comment_Importer::IMPORTED, $result['status'] );
+		update_comment_meta( $comment_id, '_swi_source_gone', true );
+
+		$record->existing_comment_id = $comment_id;
+		$record->verification        = 'unknown';
+		$result                      = Comment_Importer::import( $record );
+		$this->assertSame( Comment_Importer::UPDATED, $result['status'] );
+		$this->assertSame( '1', get_comment_meta( $comment_id, '_swi_source_gone', true ) );
+
+		$record->verification = 'unverified';
+		$record->author_name  = '';
+		$result               = Comment_Importer::import( $record );
+		$this->assertSame( Comment_Importer::FAILED_VALIDATION, $result['status'] );
+		$this->assertSame( '1', get_comment_meta( $comment_id, '_swi_source_gone', true ) );
+
+		$record->author_name = 'Recovered author';
+		$result              = Comment_Importer::import( $record );
+		$this->assertSame( Comment_Importer::UPDATED, $result['status'] );
+		$this->assertSame( $comment_id, $result['comment_id'] );
+		$this->assertFalse( metadata_exists( 'comment', $comment_id, '_swi_source_gone' ) );
+		$this->assertSame( 'unapproved', wp_get_comment_status( $comment_id ) );
 	}
 
 	public function test_reviewer_locked_fields_survive_refresh() {

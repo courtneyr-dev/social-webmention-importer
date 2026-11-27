@@ -211,6 +211,14 @@ class Comment_Importer {
 			add_filter( 'notify_post_author', $notify_author, PHP_INT_MAX, 2 );
 		}
 
+		$avatar_id          = $commentdata['comment_meta']['avatar'] ?? null;
+		$preserve_avatar_id = static function ( $url, $original_url, $context ) use ( $avatar_id ) {
+			return 'db' === $context && $avatar_id === $original_url ? (string) $avatar_id : $url;
+		};
+		if ( is_int( $avatar_id ) ) {
+			add_filter( 'clean_url', $preserve_avatar_id, 10, 3 );
+		}
+
 		try {
 			if ( $existing ) {
 				$result = self::update_existing( $existing, $record, $commentdata, $manual_fields );
@@ -238,6 +246,9 @@ class Comment_Importer {
 					: __( 'Imported (pending moderation).', 'social-webmention-importer' ),
 			);
 		} finally {
+			if ( is_int( $avatar_id ) ) {
+				remove_filter( 'clean_url', $preserve_avatar_id, 10 );
+			}
 			if ( $skip_author_email ) {
 				remove_filter( 'notify_post_author', $notify_author, PHP_INT_MAX );
 			}
@@ -329,9 +340,10 @@ class Comment_Importer {
 		$avatar = $record->avatar;
 		if ( is_numeric( $avatar ) ) {
 			$attachment_id = (int) $avatar;
-			$avatar        = wp_attachment_is_image( $attachment_id ) ? wp_get_attachment_url( $attachment_id ) : '';
-		}
-		if ( $avatar ) {
+			if ( $attachment_id > 0 && 'attachment' === get_post_type( $attachment_id ) && wp_attachment_is_image( $attachment_id ) ) {
+				$meta['avatar'] = $attachment_id;
+			}
+		} elseif ( $avatar ) {
 			$meta['avatar'] = esc_url_raw( $avatar );
 		}
 
@@ -421,6 +433,10 @@ class Comment_Importer {
 
 		foreach ( $meta as $key => $value ) {
 			update_comment_meta( $comment_id, $key, $value );
+		}
+
+		if ( '' === $record->error && in_array( $record->verification, array( 'verified', 'unverified' ), true ) ) {
+			delete_comment_meta( $comment_id, '_swi_source_gone' );
 		}
 
 		return array(

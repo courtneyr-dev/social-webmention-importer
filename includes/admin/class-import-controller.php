@@ -371,9 +371,6 @@ class Import_Controller {
 		$record->existing_comment_id = $comment_id;
 
 		$result = Comment_Importer::import( $record, array() );
-		if ( Comment_Importer::UPDATED === $result['status'] ) {
-			delete_comment_meta( $comment_id, '_swi_source_gone' );
-		}
 
 		wp_safe_redirect( add_query_arg( 'swi_refreshed', $result['status'], wp_get_referer() ?: admin_url( 'edit-comments.php' ) ) );
 		exit;
