@@ -7,6 +7,8 @@
 
 namespace CourtneyRDev\SocialWebmentionImporter\Tests\Integration;
 
+use CourtneyRDev\SocialWebmentionImporter\Admin\Import_Controller;
+use CourtneyRDev\SocialWebmentionImporter\Admin\Import_Page;
 use CourtneyRDev\SocialWebmentionImporter\Display\Attribution;
 use CourtneyRDev\SocialWebmentionImporter\Import\Comment_Importer;
 use CourtneyRDev\SocialWebmentionImporter\Import\Duplicate_Detector;
@@ -43,6 +45,20 @@ class ImporterTest extends WP_UnitTestCase {
 		parent::set_up();
 		Comment_Importer::register_meta();
 		delete_option( Plugin::OPTION_ALLOW_APPROVE );
+	}
+
+	/**
+	 * Comment text as visitors see it. The display filters only load with
+	 * Webmention active, which CI doesn't install, so hook them for parity tests.
+	 *
+	 * @param \WP_Comment $comment Comment.
+	 * @return string
+	 */
+	protected function public_comment_text( $comment ) {
+		if ( false === has_filter( 'comment_text', array( Attribution::class, 'append_source_label' ) ) ) {
+			add_filter( 'comment_text', array( Attribution::class, 'append_source_label' ), 20, 2 );
+		}
+		return apply_filters( 'comment_text', get_comment_text( $comment ), $comment, array() );
 	}
 
 	/**
@@ -115,6 +131,151 @@ class ImporterTest extends WP_UnitTestCase {
 		$this->assertSame( '', $comment->comment_author_IP );
 	}
 
+	public function test_attachment_avatar_keeps_its_id_and_follows_the_current_url() {
+		$attachment_id = wp_insert_attachment(
+			array( 'post_mime_type' => 'image/jpeg' ),
+			'swi-avatar.jpg'
+		);
+		$record        = $this->curated_record();
+		$original      = Comment_Importer::import( $record );
+		$this->assertSame( Comment_Importer::IMPORTED, $original['status'] );
+
+		$manual_fields = Import_Controller::apply_reviewer_edits( $record, array( 'avatar' => (string) $attachment_id ) );
+		$result        = Comment_Importer::import( $record, $manual_fields );
+		$this->assertSame( Comment_Importer::UPDATED, $result['status'] );
+		$this->assertSame( $original['comment_id'], $result['comment_id'] );
+		$this->assertSame( (string) $attachment_id, get_comment_meta( $result['comment_id'], 'avatar', true ) );
+
+		if ( class_exists( '\Webmention\Avatar' ) ) {
+			$comment      = get_comment( $result['comment_id'] );
+			$original_url = wp_get_attachment_url( $attachment_id );
+			$this->assertSame( $original_url, get_avatar_url( $comment ) );
+
+			update_post_meta( $attachment_id, '_wp_attached_file', 'swi-avatar-moved.jpg' );
+			$current_url = wp_get_attachment_url( $attachment_id );
+			$this->assertNotSame( $original_url, $current_url );
+			$this->assertSame( $current_url, get_avatar_url( $comment ) );
+		}
+	}
+
+	public function test_external_avatar_remains_a_url_and_nonimage_id_is_ignored() {
+		$record        = $this->curated_record();
+		$avatar_url    = 'https://example.org/reviewer-avatar.png';
+		$manual_fields = Import_Controller::apply_reviewer_edits( $record, array( 'avatar' => $avatar_url ) );
+		$result        = Comment_Importer::import( $record, $manual_fields );
+		$this->assertSame( Comment_Importer::IMPORTED, $result['status'] );
+		$this->assertSame( $avatar_url, get_comment_meta( $result['comment_id'], 'avatar', true ) );
+
+		$attachment_id = wp_insert_attachment(
+			array( 'post_mime_type' => 'application/pdf' ),
+			'swi-document.pdf'
+		);
+		$manual_fields = Import_Controller::apply_reviewer_edits( $record, array( 'avatar' => (string) $attachment_id ) );
+		$result        = Comment_Importer::import( $record, $manual_fields );
+		$this->assertSame( Comment_Importer::UPDATED, $result['status'] );
+		$this->assertSame( $avatar_url, get_comment_meta( $result['comment_id'], 'avatar', true ) );
+	}
+
+	public function test_public_preview_matches_the_approved_comment_after_a_form_edit() {
+		$record  = $this->curated_record();
+		$edited  = "Loved this 🎉\nSecond line with &lt;b&gt;, C:\\\\temp, and <a href=\"https://example.org/?a=1&amp;b=2\">a link</a>. (edited excerpt)";
+		$rows    = array( array( 'content' => $edited ) );
+		$records = Import_Controller::apply_edits_to_batch( array( $record->to_array() ), $rows );
+		$record  = Preview_Record::from_array( $records[0] );
+		$preview = Import_Page::preview_html( $record );
+
+		$manual_fields = Import_Controller::apply_reviewer_edits( $record, $rows[0] );
+		$this->assertContains( 'content', $manual_fields );
+		$result = Comment_Importer::import( $record, $manual_fields );
+		$this->assertSame( Comment_Importer::IMPORTED, $result['status'] );
+		wp_set_comment_status( $result['comment_id'], 'approve' );
+		$comment = get_comment( $result['comment_id'] );
+
+		$this->assertSame( $this->public_comment_text( $comment ), $preview );
+		$this->assertStringContainsString( '🎉', $preview );
+		$this->assertStringContainsString( '(edited excerpt)', $preview );
+		$this->assertStringContainsString( 'C:\\\\temp', $comment->comment_content );
+		$this->assertStringContainsString( 'Originally posted on', $preview );
+	}
+
+	public function test_update_preview_keeps_review_choices_and_unselects_unsubmitted_rows() {
+		$state = Import_Controller::review_form_state(
+			array( 0, 1, 2 ),
+			array(
+				0 => array(
+					'import'          => '1',
+					'confirm_curated' => '1',
+				),
+				1 => array( 'content' => 'unchecked or filtered-out row' ),
+			),
+			array(
+				'swi_skip_author_email' => '1',
+				'swi_queue_source'      => 'x.com',
+				'swi_queue_order'       => 'state',
+			)
+		);
+		$this->assertSame( array( true, false, false ), array_column( $state['rows'], 'import' ) );
+		$this->assertTrue( $state['rows'][0]['confirm_curated'] );
+		$this->assertFalse( $state['rows'][0]['remember_identity'] );
+		$this->assertFalse( $state['approve_now'] );
+		$this->assertTrue( $state['skip_author_email'] );
+		$this->assertSame( 'x.com', $state['queue_source'] );
+		$this->assertSame( 'state', $state['queue_order'] );
+	}
+
+	public function test_preview_of_an_existing_import_applies_update_kses_for_admins() {
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		if ( is_multisite() ) {
+			grant_super_admin( get_current_user_id() );
+		}
+		kses_remove_filters();
+		$record = $this->curated_record();
+		$result = Comment_Importer::import( $record );
+
+		$refetched                      = $this->curated_record();
+		$refetched->content             = 'First<br>Second';
+		$refetched->existing_comment_id = $result['comment_id'];
+		$preview                        = Import_Page::preview_html( $refetched );
+
+		Comment_Importer::import( $refetched );
+		$comment = get_comment( $result['comment_id'] );
+		$this->assertSame( $this->public_comment_text( $comment ), $preview );
+	}
+
+	public function test_preview_of_locked_content_applies_update_kses_for_admins() {
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		if ( is_multisite() ) {
+			grant_super_admin( get_current_user_id() );
+		}
+		kses_remove_filters();
+		$record        = $this->curated_record();
+		$manual_fields = Import_Controller::apply_reviewer_edits( $record, array( 'content' => 'First<br>Second' ) );
+		$result        = Comment_Importer::import( $record, $manual_fields );
+
+		$refetched                      = $this->curated_record();
+		$refetched->content             = 'Fresh parser text.';
+		$refetched->existing_comment_id = $result['comment_id'];
+		$preview                        = Import_Page::preview_html( $refetched );
+
+		Comment_Importer::import( $refetched );
+		$comment = get_comment( $result['comment_id'] );
+		$this->assertSame( $this->public_comment_text( $comment ), $preview );
+	}
+
+	public function test_public_preview_shows_a_previously_locked_excerpt() {
+		$record        = $this->curated_record();
+		$manual_fields = Import_Controller::apply_reviewer_edits( $record, array( 'content' => 'Reviewer wording that stays.' ) );
+		$result        = Comment_Importer::import( $record, $manual_fields );
+
+		$refetched                      = $this->curated_record();
+		$refetched->content             = 'Fresh parser text.';
+		$refetched->existing_comment_id = $result['comment_id'];
+		$preview                        = Import_Page::preview_html( $refetched );
+
+		$this->assertStringContainsString( 'Reviewer wording that stays.', $preview );
+		$this->assertStringNotContainsString( 'Fresh parser text.', $preview );
+	}
+
 	public function test_verified_import_uses_webmention_schema() {
 		$result  = Comment_Importer::import( $this->verified_record() );
 		$comment = get_comment( $result['comment_id'] );
@@ -175,6 +336,33 @@ class ImporterTest extends WP_UnitTestCase {
 		);
 		$this->assertCount( 1, $comments, 'No duplicate comment rows.' );
 		$this->assertStringContainsString( '(edited)', $comments[0]->comment_content );
+	}
+
+	public function test_only_successful_update_from_available_source_clears_gone_flag() {
+		$record     = $this->curated_record();
+		$result     = Comment_Importer::import( $record );
+		$comment_id = $result['comment_id'];
+		$this->assertSame( Comment_Importer::IMPORTED, $result['status'] );
+		update_comment_meta( $comment_id, '_swi_source_gone', true );
+
+		$record->existing_comment_id = $comment_id;
+		$record->verification        = 'unknown';
+		$result                      = Comment_Importer::import( $record );
+		$this->assertSame( Comment_Importer::UPDATED, $result['status'] );
+		$this->assertSame( '1', get_comment_meta( $comment_id, '_swi_source_gone', true ) );
+
+		$record->verification = 'unverified';
+		$record->author_name  = '';
+		$result               = Comment_Importer::import( $record );
+		$this->assertSame( Comment_Importer::FAILED_VALIDATION, $result['status'] );
+		$this->assertSame( '1', get_comment_meta( $comment_id, '_swi_source_gone', true ) );
+
+		$record->author_name = 'Recovered author';
+		$result              = Comment_Importer::import( $record );
+		$this->assertSame( Comment_Importer::UPDATED, $result['status'] );
+		$this->assertSame( $comment_id, $result['comment_id'] );
+		$this->assertFalse( metadata_exists( 'comment', $comment_id, '_swi_source_gone' ) );
+		$this->assertSame( 'unapproved', wp_get_comment_status( $comment_id ) );
 	}
 
 	public function test_reviewer_locked_fields_survive_refresh() {

@@ -72,29 +72,104 @@
 		} );
 	}
 
+	var queue = document.querySelector( '[data-swi-queue]' );
+	var queueControls = document.querySelector( '[data-swi-queue-controls]' );
+	if ( queue && queueControls ) {
+		var cards = Array.from( queue.children );
+		var stateFilter = document.getElementById( 'swi-queue-state' );
+		var sourceFilter = document.getElementById( 'swi-queue-source' );
+		var sort = document.getElementById( 'swi-queue-order' );
+		var queueStatus = queueControls.querySelector( '[data-swi-queue-status]' );
+
+		function filterQueue() {
+			var visible = 0;
+			cards.forEach( function ( card ) {
+				card.hidden =
+					( stateFilter.value && card.dataset.swiState !== stateFilter.value ) ||
+					( sourceFilter.value && card.dataset.swiHost !== sourceFilter.value );
+				card.disabled = false;
+				var include = card.querySelector( '[data-swi-include]' );
+				if ( include ) {
+					include.disabled = card.hidden;
+				}
+				visible += Number( ! card.hidden );
+			} );
+			queueStatus.textContent = window.swiAdmin.queueCount
+				.replace( '%1$s', visible )
+				.replace( '%2$s', cards.length );
+		}
+
+		stateFilter.addEventListener( 'change', filterQueue );
+		sourceFilter.addEventListener( 'change', filterQueue );
+		sort.addEventListener( 'change', function () {
+			var ordered = cards.slice();
+			if ( 'state' === sort.value ) {
+				ordered.sort( ( a, b ) => a.dataset.swiStateLabel.localeCompare( b.dataset.swiStateLabel ) );
+			} else if ( 'source' === sort.value ) {
+				ordered.sort( ( a, b ) => a.dataset.swiSource.localeCompare( b.dataset.swiSource ) );
+			}
+			ordered.forEach( ( card ) => queue.appendChild( card ) );
+		} );
+		// Update preview keeps every draft; import leaves hidden rows out, so they can't block validation.
+		var form = queue.closest( 'form' );
+		form.querySelector( '[name="swi_update_preview"]' ).addEventListener( 'click', function () {
+			cards.forEach( ( card ) => ( card.disabled = false ) );
+		} );
+		form.querySelector( '[name="submit"]' ).addEventListener( 'click', function () {
+			cards.forEach( ( card ) => ( card.disabled = card.hidden ) );
+		} );
+		filterQueue();
+		sort.dispatchEvent( new Event( 'change' ) );
+		queueControls.classList.remove( 'hidden' );
+	}
+
 	// --- Media Library avatar picker --------------------------------------
 
-	document.addEventListener( 'click', function ( event ) {
-		var button = event.target.closest( '[data-swi-media-picker]' );
-		if ( ! button || ! window.wp || ! window.wp.media ) {
-			return;
-		}
-		event.preventDefault();
+	if ( ! window.wp || ! window.wp.media || ! window.swiAdmin ) {
+		return;
+	}
 
+	document.querySelectorAll( '[data-swi-media-picker]' ).forEach( function ( button ) {
 		var input = document.getElementById( button.getAttribute( 'data-swi-media-picker' ) );
-		var frame = window.wp.media( {
-			title: 'Choose an avatar',
-			multiple: false,
-			library: { type: 'image' },
-		} );
+		var field = button.closest( '.swi-avatar-field' );
+		var status = field.querySelector( '[data-swi-media-status]' );
+		var preview = field.querySelector( '.swi-avatar-preview' );
 
-		frame.on( 'select', function () {
-			var attachment = frame.state().get( 'selection' ).first().toJSON();
-			if ( input ) {
-				input.value = attachment.id;
+		input.addEventListener( 'input', function () {
+			status.textContent = '';
+			if ( preview ) {
+				preview.remove();
 			}
 		} );
 
-		frame.open();
+		button.addEventListener( 'click', function () {
+			var frame = window.wp.media( {
+				title: window.swiAdmin.avatarTitle,
+				multiple: false,
+				library: { type: 'image' },
+			} );
+
+			var attachment;
+			frame.on( 'select', function () {
+				attachment = frame.state().get( 'selection' ).first();
+			} );
+
+			frame.on( 'close', function () {
+				button.focus();
+				// Core can fire "close" before "select" within the same event.
+				window.setTimeout( function () {
+					frame.detach();
+					if ( ! attachment ) {
+						return;
+					}
+					input.value = attachment.id;
+					input.dispatchEvent( new Event( 'input', { bubbles: true } ) );
+					status.textContent = window.swiAdmin.avatarSelected.replace( '%s', attachment.id );
+				}, 0 );
+			} );
+
+			frame.open();
+		} );
+		button.classList.remove( 'hidden' );
 	} );
 } )();
