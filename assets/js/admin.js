@@ -87,6 +87,7 @@
 				card.hidden =
 					( stateFilter.value && card.dataset.swiState !== stateFilter.value ) ||
 					( sourceFilter.value && card.dataset.swiHost !== sourceFilter.value );
+				card.disabled = false;
 				var include = card.querySelector( '[data-swi-include]' );
 				if ( include ) {
 					include.disabled = card.hidden;
@@ -109,6 +110,16 @@
 			}
 			ordered.forEach( ( card ) => queue.appendChild( card ) );
 		} );
+		// Update preview keeps every draft; import leaves hidden rows out, so they can't block validation.
+		var form = queue.closest( 'form' );
+		form.querySelector( '[name="swi_update_preview"]' ).addEventListener( 'click', function () {
+			cards.forEach( ( card ) => ( card.disabled = false ) );
+		} );
+		form.querySelector( '[name="submit"]' ).addEventListener( 'click', function () {
+			cards.forEach( ( card ) => ( card.disabled = card.hidden ) );
+		} );
+		filterQueue();
+		sort.dispatchEvent( new Event( 'change' ) );
 		queueControls.classList.remove( 'hidden' );
 	}
 

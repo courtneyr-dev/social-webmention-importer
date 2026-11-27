@@ -8,6 +8,7 @@
 namespace CourtneyRDev\SocialWebmentionImporter\Tests\Integration;
 
 use CourtneyRDev\SocialWebmentionImporter\Admin\Import_Controller;
+use CourtneyRDev\SocialWebmentionImporter\Admin\Import_Page;
 use CourtneyRDev\SocialWebmentionImporter\Display\Attribution;
 use CourtneyRDev\SocialWebmentionImporter\Import\Comment_Importer;
 use CourtneyRDev\SocialWebmentionImporter\Import\Duplicate_Detector;
@@ -159,6 +160,106 @@ class ImporterTest extends WP_UnitTestCase {
 		$result        = Comment_Importer::import( $record, $manual_fields );
 		$this->assertSame( Comment_Importer::UPDATED, $result['status'] );
 		$this->assertSame( $avatar_url, get_comment_meta( $result['comment_id'], 'avatar', true ) );
+	}
+
+	public function test_public_preview_matches_the_approved_comment_after_a_form_edit() {
+		$record  = $this->curated_record();
+		$edited  = "Loved this 🎉\nSecond line with &lt;b&gt;, C:\\\\temp, and <a href=\"https://example.org/?a=1&amp;b=2\">a link</a>. (edited excerpt)";
+		$rows    = array( array( 'content' => $edited ) );
+		$records = Import_Controller::apply_edits_to_batch( array( $record->to_array() ), $rows );
+		$record  = Preview_Record::from_array( $records[0] );
+		$preview = Import_Page::preview_html( $record );
+
+		$manual_fields = Import_Controller::apply_reviewer_edits( $record, $rows[0] );
+		$this->assertContains( 'content', $manual_fields );
+		$result = Comment_Importer::import( $record, $manual_fields );
+		$this->assertSame( Comment_Importer::IMPORTED, $result['status'] );
+		wp_set_comment_status( $result['comment_id'], 'approve' );
+		$comment = get_comment( $result['comment_id'] );
+
+		$this->assertSame( apply_filters( 'comment_text', get_comment_text( $comment ), $comment, array() ), $preview );
+		$this->assertStringContainsString( '🎉', $preview );
+		$this->assertStringContainsString( '(edited excerpt)', $preview );
+		$this->assertStringContainsString( 'C:\\\\temp', $comment->comment_content );
+		$this->assertStringContainsString( 'Originally posted on', $preview );
+	}
+
+	public function test_update_preview_keeps_review_choices_and_unselects_unsubmitted_rows() {
+		$state = Import_Controller::review_form_state(
+			array( 0, 1, 2 ),
+			array(
+				0 => array(
+					'import'          => '1',
+					'confirm_curated' => '1',
+				),
+				1 => array( 'content' => 'unchecked or filtered-out row' ),
+			),
+			array(
+				'swi_skip_author_email' => '1',
+				'swi_queue_source'      => 'x.com',
+				'swi_queue_order'       => 'state',
+			)
+		);
+		$this->assertSame( array( true, false, false ), array_column( $state['rows'], 'import' ) );
+		$this->assertTrue( $state['rows'][0]['confirm_curated'] );
+		$this->assertFalse( $state['rows'][0]['remember_identity'] );
+		$this->assertFalse( $state['approve_now'] );
+		$this->assertTrue( $state['skip_author_email'] );
+		$this->assertSame( 'x.com', $state['queue_source'] );
+		$this->assertSame( 'state', $state['queue_order'] );
+	}
+
+	public function test_preview_of_an_existing_import_applies_update_kses_for_admins() {
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		if ( is_multisite() ) {
+			grant_super_admin( get_current_user_id() );
+		}
+		kses_remove_filters();
+		$record = $this->curated_record();
+		$result = Comment_Importer::import( $record );
+
+		$refetched                      = $this->curated_record();
+		$refetched->content             = 'First<br>Second';
+		$refetched->existing_comment_id = $result['comment_id'];
+		$preview                        = Import_Page::preview_html( $refetched );
+
+		Comment_Importer::import( $refetched );
+		$comment = get_comment( $result['comment_id'] );
+		$this->assertSame( apply_filters( 'comment_text', get_comment_text( $comment ), $comment, array() ), $preview );
+	}
+
+	public function test_preview_of_locked_content_applies_update_kses_for_admins() {
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		if ( is_multisite() ) {
+			grant_super_admin( get_current_user_id() );
+		}
+		kses_remove_filters();
+		$record        = $this->curated_record();
+		$manual_fields = Import_Controller::apply_reviewer_edits( $record, array( 'content' => 'First<br>Second' ) );
+		$result        = Comment_Importer::import( $record, $manual_fields );
+
+		$refetched                      = $this->curated_record();
+		$refetched->content             = 'Fresh parser text.';
+		$refetched->existing_comment_id = $result['comment_id'];
+		$preview                        = Import_Page::preview_html( $refetched );
+
+		Comment_Importer::import( $refetched );
+		$comment = get_comment( $result['comment_id'] );
+		$this->assertSame( apply_filters( 'comment_text', get_comment_text( $comment ), $comment, array() ), $preview );
+	}
+
+	public function test_public_preview_shows_a_previously_locked_excerpt() {
+		$record        = $this->curated_record();
+		$manual_fields = Import_Controller::apply_reviewer_edits( $record, array( 'content' => 'Reviewer wording that stays.' ) );
+		$result        = Comment_Importer::import( $record, $manual_fields );
+
+		$refetched                      = $this->curated_record();
+		$refetched->content             = 'Fresh parser text.';
+		$refetched->existing_comment_id = $result['comment_id'];
+		$preview                        = Import_Page::preview_html( $refetched );
+
+		$this->assertStringContainsString( 'Reviewer wording that stays.', $preview );
+		$this->assertStringNotContainsString( 'Fresh parser text.', $preview );
 	}
 
 	public function test_verified_import_uses_webmention_schema() {

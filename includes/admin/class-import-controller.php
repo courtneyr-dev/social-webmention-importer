@@ -150,6 +150,22 @@ class Import_Controller {
 		$rows    = isset( $_POST['rows'] ) && is_array( $_POST['rows'] ) ? wp_unslash( $_POST['rows'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- each field sanitized in apply_reviewer_edits().
 		$results = array();
 
+		if ( ! empty( $_POST['swi_update_preview'] ) ) {
+			$batch['records'] = self::apply_edits_to_batch( $batch['records'], $rows );
+			$batch['form']    = self::review_form_state( array_keys( $batch['records'] ), $rows, wp_unslash( $_POST ) ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- each value sanitized in review_form_state().
+			set_transient( self::batch_key( $token ), $batch, self::BATCH_TTL );
+			wp_safe_redirect(
+				add_query_arg(
+					array(
+						'page'      => 'social-webmention-importer',
+						'swi_batch' => $token,
+					),
+					admin_url( 'tools.php' )
+				)
+			);
+			exit;
+		}
+
 		// Explicit reviewer choice to publish on import (never a default).
 		$approve_now       = ! empty( $_POST['swi_approve_now'] );
 		$skip_author_email = ! empty( $_POST['swi_skip_author_email'] );
@@ -234,6 +250,53 @@ class Import_Controller {
 	}
 
 	/**
+	 * Review controls to restore after Update preview.
+	 *
+	 * @param int[]   $indexes Batch row indexes.
+	 * @param array[] $rows    Submitted rows. A filtered-out row's include box is disabled, so it stays unselected.
+	 * @param array   $post    Unslashed request fields.
+	 * @return array
+	 */
+	public static function review_form_state( array $indexes, array $rows, array $post ) {
+		return array(
+			'rows'              => array_combine(
+				$indexes,
+				array_map(
+					static fn( $index ) => array(
+						'import'            => ! empty( $rows[ $index ]['import'] ),
+						'confirm_curated'   => ! empty( $rows[ $index ]['confirm_curated'] ),
+						'remember_identity' => ! empty( $rows[ $index ]['remember_identity'] ),
+					),
+					$indexes
+				)
+			),
+			'approve_now'       => ! empty( $post['swi_approve_now'] ),
+			'skip_author_email' => ! empty( $post['swi_skip_author_email'] ),
+			'queue_state'       => sanitize_key( $post['swi_queue_state'] ?? '' ),
+			'queue_source'      => sanitize_text_field( $post['swi_queue_source'] ?? '' ),
+			'queue_order'       => sanitize_key( $post['swi_queue_order'] ?? '' ),
+		);
+	}
+
+	/**
+	 * Apply the review form's edits to stored batch records so the preview shows them.
+	 *
+	 * @param array[] $records Stored record arrays.
+	 * @param array[] $rows    Submitted rows, keyed like the records.
+	 * @return array[]
+	 */
+	public static function apply_edits_to_batch( array $records, array $rows ) {
+		foreach ( $records as $index => $stored ) {
+			$record = Preview_Record::from_array( $stored );
+			if ( '' === $record->error && isset( $rows[ $index ] ) && is_array( $rows[ $index ] ) ) {
+				self::apply_reviewer_edits( $record, $rows[ $index ] );
+			}
+			$records[ $index ] = $record->to_array();
+		}
+		return $records;
+	}
+
+	/**
 	 * Overlay reviewer edits onto a stored record, tracking edited fields.
 	 *
 	 * @param Preview_Record       $record Stored preview record (modified in place).
@@ -280,6 +343,12 @@ class Import_Controller {
 		// A reviewer cannot upgrade an unverified row to Webmention mode.
 		if ( Plugin::MODE_WEBMENTION === $record->mode && 'verified' !== $record->verification ) {
 			$record->mode = Plugin::MODE_SOCIAL_LINKBACK;
+		}
+
+		foreach ( array_keys( $editable ) as $field ) {
+			if ( 'manual' === ( $record->extraction[ $field ] ?? '' ) && ! in_array( $field, $manual, true ) ) {
+				$manual[] = $field;
+			}
 		}
 
 		if ( $manual ) {

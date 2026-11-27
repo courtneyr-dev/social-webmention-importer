@@ -274,7 +274,7 @@ class Comment_Importer {
 		remove_action( 'check_comment_flood', 'check_comment_flood_db', 10 );
 
 		try {
-			return wp_new_comment( $commentdata, true );
+			return wp_new_comment( wp_slash( $commentdata ), true );
 		} finally {
 			add_action( 'check_comment_flood', 'check_comment_flood_db', 10, 4 );
 			remove_filter( 'pre_comment_approved', $approve_cb, 999 );
@@ -413,7 +413,7 @@ class Comment_Importer {
 			$update['comment_date'] = get_date_from_gmt( $update['comment_date_gmt'] );
 		}
 
-		$result = wp_update_comment( $update, true );
+		$result = wp_update_comment( wp_slash( $update ), true );
 		if ( is_wp_error( $result ) ) {
 			return array(
 				'status'     => self::FAILED_INSERTION,

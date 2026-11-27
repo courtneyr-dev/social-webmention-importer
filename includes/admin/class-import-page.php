@@ -12,6 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use CourtneyRDev\SocialWebmentionImporter\Abilities\Abilities;
+use CourtneyRDev\SocialWebmentionImporter\Display\Attribution;
 use CourtneyRDev\SocialWebmentionImporter\Import\Comment_Importer;
 use CourtneyRDev\SocialWebmentionImporter\Import\Preview_Record;
 use CourtneyRDev\SocialWebmentionImporter\Plugin;
@@ -364,6 +365,7 @@ class Import_Page {
 
 		$post_id = (int) $batch['post_id'];
 		$records = array_map( array( Preview_Record::class, 'from_array' ), $batch['records'] );
+		$form    = $batch['form'] ?? array();
 		$states  = array(
 			'new'         => __( 'New', 'social-webmention-importer' ),
 			'pending'     => __( 'Pending', 'social-webmention-importer' ),
@@ -407,24 +409,24 @@ class Import_Page {
 				<fieldset class="hidden" data-swi-queue-controls>
 					<legend><?php esc_html_e( 'Review queue', 'social-webmention-importer' ); ?></legend>
 					<label for="swi-queue-state"><?php esc_html_e( 'State', 'social-webmention-importer' ); ?></label>
-					<select id="swi-queue-state">
+					<select id="swi-queue-state" name="swi_queue_state">
 						<option value=""><?php esc_html_e( 'All states', 'social-webmention-importer' ); ?></option>
 						<?php foreach ( $states as $state => $label ) : ?>
-							<option value="<?php echo esc_attr( $state ); ?>"><?php echo esc_html( $label ); ?></option>
+							<option value="<?php echo esc_attr( $state ); ?>" <?php selected( $form['queue_state'] ?? '', $state ); ?>><?php echo esc_html( $label ); ?></option>
 						<?php endforeach; ?>
 					</select>
 					<label for="swi-queue-source"><?php esc_html_e( 'Source', 'social-webmention-importer' ); ?></label>
-					<select id="swi-queue-source">
+					<select id="swi-queue-source" name="swi_queue_source">
 						<option value=""><?php esc_html_e( 'All sources', 'social-webmention-importer' ); ?></option>
 						<?php foreach ( $hosts as $host ) : ?>
-							<option value="<?php echo esc_attr( $host ); ?>"><?php echo esc_html( $host ); ?></option>
+							<option value="<?php echo esc_attr( $host ); ?>" <?php selected( $form['queue_source'] ?? '', $host ); ?>><?php echo esc_html( $host ); ?></option>
 						<?php endforeach; ?>
 					</select>
 					<label for="swi-queue-order"><?php esc_html_e( 'Sort by', 'social-webmention-importer' ); ?></label>
-					<select id="swi-queue-order">
+					<select id="swi-queue-order" name="swi_queue_order">
 						<option value=""><?php esc_html_e( 'Input order', 'social-webmention-importer' ); ?></option>
-						<option value="state"><?php esc_html_e( 'State', 'social-webmention-importer' ); ?></option>
-						<option value="source"><?php esc_html_e( 'Source URL', 'social-webmention-importer' ); ?></option>
+						<option value="state" <?php selected( $form['queue_order'] ?? '', 'state' ); ?>><?php esc_html_e( 'State', 'social-webmention-importer' ); ?></option>
+						<option value="source" <?php selected( $form['queue_order'] ?? '', 'source' ); ?>><?php esc_html_e( 'Source URL', 'social-webmention-importer' ); ?></option>
 					</select>
 					<p class="description"><?php esc_html_e( 'Only checked responses shown by these filters will import.', 'social-webmention-importer' ); ?></p>
 					<p role="status" aria-live="polite" aria-atomic="true" data-swi-queue-status></p>
@@ -434,26 +436,29 @@ class Import_Page {
 				<?php foreach ( $records as $index => $record ) : ?>
 					<?php
 					$state = self::review_state( $record );
-					self::render_review_card( $index, $record, $state, $states[ $state ] );
+					self::render_review_card( $index, $record, $state, $states[ $state ], $form['rows'][ $index ] ?? null );
 					?>
 				<?php endforeach; ?>
 			</div>
 
 			<p>
 				<label for="swi-approve-now">
-					<input type="checkbox" name="swi_approve_now" id="swi-approve-now" value="1" />
+					<input type="checkbox" name="swi_approve_now" id="swi-approve-now" value="1" <?php checked( ! empty( $form['approve_now'] ) ); ?> />
 					<?php esc_html_e( 'Approve these responses immediately instead of holding them as pending. You reviewed each one above; this publishes them on import.', 'social-webmention-importer' ); ?>
 				</label>
 			</p>
 
 			<p>
 				<label for="swi-skip-author-email">
-					<input type="checkbox" name="swi_skip_author_email" id="swi-skip-author-email" value="1" />
-					<?php esc_html_e( 'Skip the new-comment email to the post author for this historical import.', 'social-webmention-importer' ); ?>
+					<input type="checkbox" name="swi_skip_author_email" id="swi-skip-author-email" value="1" <?php checked( ! empty( $form['skip_author_email'] ) ); ?> />
+					<?php esc_html_e( 'Skip the new-comment email to the post author while importing. Approving a pending response later can still send WordPress\'s approval email.', 'social-webmention-importer' ); ?>
 				</label>
 			</p>
 
-			<?php submit_button( __( 'Import selected responses', 'social-webmention-importer' ) ); ?>
+			<p>
+				<?php submit_button( __( 'Update preview', 'social-webmention-importer' ), 'secondary', 'swi_update_preview', false, array( 'formnovalidate' => 'formnovalidate' ) ); ?>
+				<?php submit_button( __( 'Import selected responses', 'social-webmention-importer' ), 'primary', 'submit', false ); ?>
+			</p>
 		</form>
 		<?php
 	}
@@ -484,14 +489,48 @@ class Import_Page {
 	}
 
 	/**
+	 * Render a response the way the public comment shows it after approval.
+	 *
+	 * @param Preview_Record $record Reviewed record.
+	 * @return string
+	 */
+	public static function preview_html( Preview_Record $record ) {
+		$commentdata = Comment_Importer::build_commentdata( $record );
+		$existing    = $record->existing_comment_id ? get_comment( $record->existing_comment_id ) : null;
+		$raw         = $commentdata['comment_content'];
+		if ( $existing && 'manual' !== ( $record->extraction['content'] ?? '' )
+			&& in_array( 'content', (array) get_comment_meta( $existing->comment_ID, '_swi_manual_fields', true ), true ) ) {
+			$raw = $existing->comment_content;
+		}
+		// wp_update_comment() adds KSES for a comment whose user can't post unfiltered HTML.
+		$kses = $existing && ! has_filter( 'pre_comment_content', 'wp_filter_kses' ) && ! user_can( (int) $existing->user_id, 'unfiltered_html' );
+		if ( $kses ) {
+			add_filter( 'pre_comment_content', 'wp_filter_kses' );
+		}
+		$content = wp_unslash( apply_filters( 'pre_comment_content', wp_slash( $raw ) ) ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Core's own hook.
+		if ( $kses ) {
+			remove_filter( 'pre_comment_content', 'wp_filter_kses' );
+		}
+		$label  = Attribution::source_label( $record->mode, $record->provider, $commentdata['comment_meta']['url'] );
+		$append = static fn( $text ) => $text . $label;
+
+		// Same priority as Attribution::append_source_label, so wpautop treats the label as it does on the comment.
+		add_filter( 'comment_text', $append, 20 );
+		$html = apply_filters( 'comment_text', $content, null, array() ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Core's own hook.
+		remove_filter( 'comment_text', $append, 20 );
+		return $html;
+	}
+
+	/**
 	 * One editable preview card.
 	 *
 	 * @param int            $index  Row index.
 	 * @param Preview_Record $record Record.
 	 * @param string         $state  Queue state key.
 	 * @param string         $label  Queue state label.
+	 * @param array|null     $saved  Saved row checkboxes after Update preview, or null for the defaults.
 	 */
-	protected static function render_review_card( $index, Preview_Record $record, $state, $label ) {
+	protected static function render_review_card( $index, Preview_Record $record, $state, $label, $saved = null ) {
 		$field = fn( $name ) => "rows[{$index}][{$name}]";
 		$id    = fn( $name ) => "swi-{$index}-{$name}";
 
@@ -533,7 +572,7 @@ class Import_Page {
 
 				<p class="swi-card__status">
 					<label>
-						<input type="checkbox" name="<?php echo esc_attr( $field( 'import' ) ); ?>" value="1" data-swi-include <?php checked( ! in_array( $state, array( 'duplicate', 'source-gone' ), true ) ); ?> />
+						<input type="checkbox" name="<?php echo esc_attr( $field( 'import' ) ); ?>" value="1" data-swi-include <?php checked( $saved['import'] ?? ! in_array( $state, array( 'duplicate', 'source-gone' ), true ) ); ?> />
 						<strong><?php esc_html_e( 'Import this response', 'social-webmention-importer' ); ?></strong>
 					</label>
 
@@ -616,12 +655,18 @@ class Import_Page {
 					<textarea id="<?php echo esc_attr( $id( 'content' ) ); ?>" name="<?php echo esc_attr( $field( 'content' ) ); ?>" rows="4" class="large-text"><?php echo esc_textarea( $record->content ); ?></textarea>
 				</p>
 
+				<div class="swi-public-preview">
+					<p><strong><?php esc_html_e( 'Public preview', 'social-webmention-importer' ); ?></strong></p>
+					<div class="comment-content"><?php echo wp_kses_post( self::preview_html( $record ) ); ?></div>
+					<p class="description"><?php esc_html_e( 'How this response appears once approved. After editing, choose Update preview to refresh it.', 'social-webmention-importer' ); ?></p>
+				</div>
+
 				<input type="hidden" name="<?php echo esc_attr( $field( 'mode' ) ); ?>" value="<?php echo esc_attr( $record->mode ); ?>" />
 
 				<?php if ( $mode_is_curated ) : ?>
 					<p>
 						<label>
-							<input type="checkbox" name="<?php echo esc_attr( $field( 'confirm_curated' ) ); ?>" value="1" />
+							<input type="checkbox" name="<?php echo esc_attr( $field( 'confirm_curated' ) ); ?>" value="1" <?php checked( ! empty( $saved['confirm_curated'] ) ); ?> />
 							<?php esc_html_e( 'I confirm importing this as a curated social response. It is not a Webmention: the source does not link to the article, and it will be labeled as imported from the network with a link to the original.', 'social-webmention-importer' ); ?>
 						</label>
 					</p>
@@ -629,7 +674,7 @@ class Import_Page {
 
 				<p>
 					<label>
-						<input type="checkbox" name="<?php echo esc_attr( $field( 'remember_identity' ) ); ?>" value="1" />
+						<input type="checkbox" name="<?php echo esc_attr( $field( 'remember_identity' ) ); ?>" value="1" <?php checked( ! empty( $saved['remember_identity'] ) ); ?> />
 						<?php esc_html_e( 'Use this identity for future imports — saves the name, profile URL, and avatar for this handle so later previews are pre-filled with your corrections.', 'social-webmention-importer' ); ?>
 					</label>
 				</p>

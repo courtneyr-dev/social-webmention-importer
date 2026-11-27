@@ -113,10 +113,26 @@ class Attribution {
 			return $comment_text;
 		}
 
+		return $comment_text . self::source_label( $mode, $provider, get_comment_meta( $comment->comment_ID, 'url', true ) );
+	}
+
+	/**
+	 * Markup appended after an imported response's text.
+	 *
+	 * @param string $mode     Import mode.
+	 * @param string $provider Provider slug.
+	 * @param string $source   Source URL stored on the comment.
+	 * @return string
+	 */
+	public static function source_label( $mode, $provider, $source ) {
+		if ( ! $provider ) {
+			return '';
+		}
+
 		$network = self::PROVIDER_LABELS[ $provider ] ?? ucfirst( (string) $provider );
 
 		if ( Plugin::MODE_WEBMENTION === $mode ) {
-			return $comment_text . sprintf(
+			return sprintf(
 				'<span class="screen-reader-text">%s</span>',
 				esc_html(
 					sprintf(
@@ -129,13 +145,11 @@ class Attribution {
 		}
 
 		if ( Plugin::MODE_SOCIAL_LINKBACK !== $mode ) {
-			return $comment_text;
+			return '';
 		}
 
-		$source = get_comment_meta( $comment->comment_ID, 'url', true );
-
 		if ( ! $source || ! wp_http_validate_url( $source ) ) {
-			return $comment_text;
+			return '';
 		}
 
 		$label = sprintf(
@@ -151,7 +165,7 @@ class Attribution {
 			esc_html__( ' (external)', 'social-webmention-importer' )
 		);
 
-		return $comment_text . $label;
+		return $label;
 	}
 
 	/**
