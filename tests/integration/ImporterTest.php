@@ -48,6 +48,20 @@ class ImporterTest extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Comment text as visitors see it. The display filters only load with
+	 * Webmention active, which CI doesn't install, so hook them for parity tests.
+	 *
+	 * @param \WP_Comment $comment Comment.
+	 * @return string
+	 */
+	protected function public_comment_text( $comment ) {
+		if ( false === has_filter( 'comment_text', array( Attribution::class, 'append_source_label' ) ) ) {
+			add_filter( 'comment_text', array( Attribution::class, 'append_source_label' ), 20, 2 );
+		}
+		return apply_filters( 'comment_text', get_comment_text( $comment ), $comment, array() );
+	}
+
+	/**
 	 * A reviewed curated (Mode B) record for the shared post.
 	 */
 	protected function curated_record() {
@@ -177,7 +191,7 @@ class ImporterTest extends WP_UnitTestCase {
 		wp_set_comment_status( $result['comment_id'], 'approve' );
 		$comment = get_comment( $result['comment_id'] );
 
-		$this->assertSame( apply_filters( 'comment_text', get_comment_text( $comment ), $comment, array() ), $preview );
+		$this->assertSame( $this->public_comment_text( $comment ), $preview );
 		$this->assertStringContainsString( '🎉', $preview );
 		$this->assertStringContainsString( '(edited excerpt)', $preview );
 		$this->assertStringContainsString( 'C:\\\\temp', $comment->comment_content );
@@ -225,7 +239,7 @@ class ImporterTest extends WP_UnitTestCase {
 
 		Comment_Importer::import( $refetched );
 		$comment = get_comment( $result['comment_id'] );
-		$this->assertSame( apply_filters( 'comment_text', get_comment_text( $comment ), $comment, array() ), $preview );
+		$this->assertSame( $this->public_comment_text( $comment ), $preview );
 	}
 
 	public function test_preview_of_locked_content_applies_update_kses_for_admins() {
@@ -245,7 +259,7 @@ class ImporterTest extends WP_UnitTestCase {
 
 		Comment_Importer::import( $refetched );
 		$comment = get_comment( $result['comment_id'] );
-		$this->assertSame( apply_filters( 'comment_text', get_comment_text( $comment ), $comment, array() ), $preview );
+		$this->assertSame( $this->public_comment_text( $comment ), $preview );
 	}
 
 	public function test_public_preview_shows_a_previously_locked_excerpt() {
